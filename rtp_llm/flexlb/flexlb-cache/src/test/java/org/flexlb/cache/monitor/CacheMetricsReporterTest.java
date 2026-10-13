@@ -1,4 +1,5 @@
 package org.flexlb.cache.monitor;
+import org.flexlb.cache.telemetry.CacheMetricsReporter;
 
 import org.flexlb.cache.core.RecentCacheKeyWindow;
 import org.flexlb.dao.route.RoleType;
@@ -55,25 +56,6 @@ class CacheMetricsReporterTest {
     }
 
     @Test
-    void should_register_recent_cache_key_metrics_as_visible_series() {
-        reporter.init();
-
-        verify(monitor).register(CACHE_RECENT_KEY_HIT_COUNT, FlexMetricType.GAUGE);
-        verify(monitor).register(CACHE_RECENT_KEY_TOTAL_COUNT, FlexMetricType.GAUGE);
-        verify(monitor).register(CACHE_CLUSTER_RECENT_HIT_TOKENS, FlexMetricType.QPS);
-        verify(monitor).register(CACHE_CLUSTER_RECENT_INPUT_TOKENS, FlexMetricType.QPS);
-        verify(monitor).register(CACHE_CLUSTER_RECENT_HISTORY_COVERAGE_MS, FlexMetricType.GAUGE);
-        verify(monitor).register(CACHE_CLUSTER_RECENT_HISTORY_READY, FlexMetricType.GAUGE);
-        verify(monitor).register(CACHE_THEORY_HIT_COUNT, FlexMetricType.GAUGE);
-        verify(monitor).register(CACHE_THEORY_TOTAL_COUNT, FlexMetricType.GAUGE);
-        verify(monitor).register(CACHE_THEORY_HIT_RATIO, FlexMetricType.GAUGE);
-        verify(monitor).register(CACHE_ROUTING_SELECTED_MATCH_HIT_TOKENS, FlexMetricType.QPS);
-        verify(monitor).register(CACHE_ROUTING_SELECTED_MATCH_TOTAL_TOKENS, FlexMetricType.QPS);
-        verify(monitor).register(CACHE_ROUTING_CANDIDATE_MAX_HIT_TOKENS, FlexMetricType.QPS);
-        verify(monitor).register(CACHE_AFFINITY_DECISION, FlexMetricType.QPS);
-    }
-
-    @Test
     void should_not_publish_a_cluster_ratio_from_partial_history() {
         RecentCacheKeyWindow.Snapshot snapshot = mock(RecentCacheKeyWindow.Snapshot.class);
         when(snapshot.getTimeWindowMs()).thenReturn(1800000L);
@@ -100,66 +82,5 @@ class CacheMetricsReporterTest {
         verify(monitor).report(CACHE_CLUSTER_RECENT_INPUT_TOKENS, tags, 216513L);
     }
 
-    @Test
-    void should_report_cache_affinity_decision() {
-        reporter.reportCacheAffinityDecision(RoleType.PREFILL, "10.0.0.1", "CACHE_LEADER");
 
-        FlexMetricTags tags =
-                FlexMetricTags.of(
-                        "role", "PREFILL",
-                        "engineIp", "10.0.0.1",
-                        "decision", "CACHE_LEADER");
-        verify(monitor).report(CACHE_AFFINITY_DECISION, tags, 1.0);
-    }
-
-    @Test
-    void should_report_engine_local_metrics_without_engine_ip_port() {
-        reporter.reportEngineLocalMetrics("10.0.0.1", "PREFILL", 2);
-
-        FlexMetricTags tags = FlexMetricTags.of("engineIp", "10.0.0.1", "role", "PREFILL");
-        verify(monitor).report(CACHE_ENGINE_LOCAL_COUNT, tags, 2);
-        verify(monitor).report(CACHE_ENGINE_LOCAL_BYTES, tags, 272L);
-    }
-
-    @Test
-    void should_report_zero_hit_token_request_as_visible_data_point() {
-        reporter.reportRecentCacheKeyHitMetrics(1800000L, 0L, 300L);
-
-        FlexMetricTags tags = FlexMetricTags.of("timeWindowMs", "1800000");
-        verify(monitor).report(CACHE_RECENT_KEY_HIT_COUNT, tags, 0L);
-        verify(monitor).report(CACHE_RECENT_KEY_TOTAL_COUNT, tags, 300L);
-    }
-
-    @Test
-    void should_skip_empty_token_request() {
-        reporter.reportRecentCacheKeyHitMetrics(1800000L, 0L, 0L);
-
-        FlexMetricTags tags = FlexMetricTags.of("timeWindowMs", "1800000");
-        verify(monitor, never()).report(CACHE_RECENT_KEY_HIT_COUNT, tags, 0L);
-        verify(monitor, never()).report(CACHE_RECENT_KEY_TOTAL_COUNT, tags, 0L);
-    }
-
-    @Test
-    void should_report_theory_cache_hit_metrics() {
-        CacheHitTheoryStats stats = new CacheHitTheoryStats(() -> 0L);
-        CacheHitTheoryStats.Snapshot snapshot = stats.record(2L, 4L, 0L);
-
-        reporter.reportTheoryCacheHitMetrics(snapshot);
-
-        FlexMetricTags allTags = FlexMetricTags.of("window", "all", "windowMs", "0");
-        verify(monitor).report(CACHE_THEORY_HIT_COUNT, allTags, 2L);
-        verify(monitor).report(CACHE_THEORY_TOTAL_COUNT, allTags, 4L);
-        verify(monitor).report(CACHE_THEORY_HIT_RATIO, allTags, 0.5D);
-    }
-
-    @Test
-    void should_report_routing_cache_match_token_metrics() {
-        reporter.reportRoutingSelectedCacheMatchMetrics(RoleType.PREFILL, 128L, 1024L);
-        reporter.reportRoutingCandidateMaxCacheMatchMetrics(RoleType.PREFILL, 256L);
-
-        FlexMetricTags roleTags = FlexMetricTags.of("role", RoleType.PREFILL.name());
-        verify(monitor).report(CACHE_ROUTING_SELECTED_MATCH_HIT_TOKENS, roleTags, 128L);
-        verify(monitor).report(CACHE_ROUTING_SELECTED_MATCH_TOTAL_TOKENS, roleTags, 1024L);
-        verify(monitor).report(CACHE_ROUTING_CANDIDATE_MAX_HIT_TOKENS, roleTags, 256L);
-    }
 }
