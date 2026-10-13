@@ -74,7 +74,8 @@
                     <groupId>org.flexlb</groupId>
                     <artifactId>vipserver</artifactId>
                 </dependency>
-            </dependencies>
+            <dependency><groupId>org.flexlb</groupId><artifactId>dashscope-discovery</artifactId></dependency>
+</dependencies>
         </profile>
     </profiles>
 

@@ -10,6 +10,7 @@ import org.flexlb.balance.endpoint.WorkerEndpoint;
 import org.flexlb.balance.eviction.EvictionManager;
 import org.flexlb.balance.strategy.CostBasedPrefillStrategy;
 import org.flexlb.balance.strategy.DecodeSelector;
+import org.flexlb.balance.strategy.EncoderStrategy;
 import org.flexlb.balance.strategy.RandomStrategy;
 import org.flexlb.balance.strategy.SelectedRole;
 import org.flexlb.config.ConfigService;
@@ -118,12 +119,16 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
 
     /** Return the canonical request future retained by the exact test slot. */
     public CompletableFuture<Response> requestFuture(long requestId) {
+        return requestFuture(Long.toString(requestId));
+    }
+
+    public CompletableFuture<Response> requestFuture(String requestId) {
         RequestSlot slot = lifecycle.requestSlot(requestId);
         return slot == null ? null : slot.future();
     }
 
     /** Return the exact item currently owned by a fixture request slot. */
-    public RequestExecution activeItem(long requestId) {
+    public RequestExecution activeItem(String requestId) {
         RequestSlot slot = lifecycle.requestSlot(requestId);
         if (slot == null) {
             return null;
@@ -158,12 +163,13 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
         Objects.requireNonNull(status, "status");
         Objects.requireNonNull(observation, "observation");
         RoleType role = observation.role();
-        WorkerEndpoint endpoint = registry.get(
-                role, status.getIpPort(), status);
+        WorkerEndpoint endpoint = registry.get(role, status.getLogicalIpPort(), status);
         if (endpoint == null) {
             throw new IllegalStateException(
                     "status generation has no published endpoint: "
-                            + status.getIpPort() + "#" + status.getGenerationId());
+                            + status.getLogicalIpPort()
+                            + "#"
+                            + status.getGenerationId());
         }
 
         Runnable projection;
@@ -210,9 +216,8 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
                 if (status == null) {
                     continue;
                 }
-                String address = status.getServerIp() + ":" + status.getHttpPort();
-                WorkerEndpoint.GenerationPin pin = registry.capture(
-                        status.getRole(), address);
+                String address = status.getLogicalIpPort();
+                WorkerEndpoint.GenerationPin pin = registry.capture(status.getRole(), address);
                 if (pin == null) {
                     throw new IllegalStateException(
                             "fixture route references an unpublished endpoint: "
@@ -237,9 +242,9 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
                 case PREFILL, PDFUSION -> SelectedRole.prefill(
                         pin, status, Math.max(0L, status.getPrefillTime()));
                 case DECODE -> SelectedRole.decode(pin, status);
-                case VIT -> SelectedRole.stateless(pin, status);
-                case FRONTEND -> throw new IllegalArgumentException(
-                        "FRONTEND cannot be a worker route");
+                case VIT, ENCODER -> SelectedRole.stateless(pin, status);
+                case FRONTEND ->
+                        throw new IllegalArgumentException("FRONTEND cannot be a worker route");
             };
         } catch (RuntimeException | Error failure) {
             pin.close();
@@ -263,6 +268,7 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
                             org.mockito.Mockito.mock(org.flexlb.service.monitor.EngineHealthReporter.class)),
                     new DecodeSelector(workers),
                     new RandomStrategy(workers),
+                    org.mockito.Mockito.mock(EncoderStrategy.class),
                     configs,
                     emptyModelMeta());
         }
