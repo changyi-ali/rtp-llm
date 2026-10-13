@@ -31,7 +31,7 @@ public class GrpcReporter {
     public void init() {
         this.monitor.register(GRPC_CHANNEL_POOL_SIZE, FlexMetricType.GAUGE);
         this.monitor.register(GRPC_CALL_DURATION, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
-        this.monitor.register(GRPC_CALL_COUNT, FlexMetricType.QPS);
+        this.monitor.register(GRPC_CALL_COUNT, FlexMetricType.QPS, FlexPriorityType.PRECISE);
         this.monitor.register(GRPC_CALL_FAILURE, FlexMetricType.QPS, FlexPriorityType.PRECISE);
         this.monitor.register(GRPC_DELIVERY_DELAY, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
         this.monitor.register(GRPC_CONNECTION_DURATION, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);

@@ -4,8 +4,8 @@ import io.grpc.ManagedChannel;
 import io.grpc.Deadline;
 import lombok.Getter;
 import org.flexlb.engine.grpc.monitor.GrpcReporter;
-import org.flexlb.engine.grpc.nameresolver.CustomNameResolver;
-import org.flexlb.util.CommonUtils;
+import org.flexlb.engine.grpc.nameresolver.EngineAddressResolver;
+import org.flexlb.dao.master.WorkerHost;
 import org.flexlb.util.Logger;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * description:
  * date: 2025/4/23
  */
-public abstract class AbstractGrpcClient implements CustomNameResolver.Listener {
+public abstract class AbstractGrpcClient implements EngineAddressResolver.Listener {
 
     /**
      * Maintain different channel for different service type.
@@ -33,6 +33,7 @@ public abstract class AbstractGrpcClient implements CustomNameResolver.Listener 
      */
     protected final Map<String/*ip:port:serviceType*/, Invoker> channelPool = new ConcurrentHashMap<>();
     protected final GrpcReporter grpcReporter;
+    protected boolean cacheStatusEnabled = true;
 
     protected AbstractGrpcClient(GrpcReporter grpcReporter) {
         this.grpcReporter = grpcReporter;
@@ -45,7 +46,7 @@ public abstract class AbstractGrpcClient implements CustomNameResolver.Listener 
      * @param ipPortList Latest worker address list in format ip:httpPort
      */
     @Override
-    public void onAddressUpdate(List<String/*ip:port*/> ipPortList) {
+    public void onAddressUpdate(List<WorkerHost> ipPortList) {
         if (ipPortList == null) {
             Logger.error("received null ipPort list");
             return;
@@ -62,19 +63,20 @@ public abstract class AbstractGrpcClient implements CustomNameResolver.Listener 
      *
      * @param ipPortList Latest worker address list in format ip:httpPort
      */
-    private void updateGrpcChannelPool(List<String> ipPortList) {
+    private void updateGrpcChannelPool(List<WorkerHost> ipPortList) {
         Set<String/*ip:port:serviceType*/> currentKeys = new HashSet<>(channelPool.keySet());
         List<String/*ip:port:serviceType*/> addedKeys = new ArrayList<>();
 
         // Identify new and retained workers, mark channels to be removed
-        for (String ipPort : ipPortList) {
-            String[] parts = ipPort.split(":");
-            String ip = parts[0];
-            int httpPort = Integer.parseInt(parts[1]);
-            int grpcPort = CommonUtils.toGrpcPort(httpPort);
-
+        for (WorkerHost host : ipPortList) {
             for (ServiceType serviceType : ServiceType.values()) {
-                String serviceKey = createKey(ip, grpcPort, serviceType);
+                if (!cacheStatusEnabled && (serviceType == ServiceType.CACHE_STATUS
+                        || serviceType == ServiceType.MULTIMODAL_CACHE_STATUS)) {
+                    continue;
+                }
+                int port = (serviceType == ServiceType.BATCH_ENQUEUE || serviceType == ServiceType.ENGINE_CANCEL)
+                        ? host.getGrpcPort() : host.getWorkerStatusPort();
+                String serviceKey = createKey(host.getIp(), port, serviceType);
                 boolean contained = currentKeys.remove(serviceKey);
                 if (!contained) {
                     addedKeys.add(serviceKey);

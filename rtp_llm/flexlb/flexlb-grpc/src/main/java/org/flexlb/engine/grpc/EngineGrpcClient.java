@@ -16,7 +16,7 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.WriteBufferWaterMark;
 import lombok.Getter;
 import org.flexlb.engine.grpc.monitor.GrpcReporter;
-import org.flexlb.engine.grpc.nameresolver.CustomNameResolver;
+import org.flexlb.engine.grpc.nameresolver.EngineAddressResolver;
 import org.flexlb.util.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -33,7 +33,6 @@ import java.util.function.Function;
 /**
  * Engine gRPC client for worker status queries
  */
-@Component
 public class EngineGrpcClient extends AbstractGrpcClient {
 
     private static final int DEFAULT_CONNECT_TIMEOUT_MILLIS = 20;
@@ -65,7 +64,7 @@ public class EngineGrpcClient extends AbstractGrpcClient {
     private final AtomicLongArray lastMetricsWarningNanos = new AtomicLongArray(MetricOperation.values().length);
 
     @Autowired
-    public EngineGrpcClient(CustomNameResolver nameResolver,
+    public EngineGrpcClient(EngineAddressResolver nameResolver,
                             @Qualifier("managedChannelThreadPoolExecutor") ThreadPoolExecutor executor,
                             @Qualifier("managedChannelEventLoopGroup") EventLoopGroup eventLoopGroup,
                             GrpcReporter grpcReporter,
@@ -87,10 +86,10 @@ public class EngineGrpcClient extends AbstractGrpcClient {
         this.executor = executor;
         this.eventLoopGroup = eventLoopGroup;
         this.connectTimeoutMillis = connectTimeoutMillis;
-        nameResolver.start(this);
+        nameResolver.subscribe(this);
     }
 
-    static boolean retriesBrokenConnections(ServiceType serviceType) {
+    public static boolean retriesBrokenConnections(ServiceType serviceType) {
         return serviceType != ServiceType.BATCH_ENQUEUE
                 && serviceType != ServiceType.ENGINE_CANCEL;
     }
