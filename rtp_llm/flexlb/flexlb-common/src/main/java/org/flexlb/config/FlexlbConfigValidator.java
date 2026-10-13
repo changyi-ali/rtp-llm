@@ -11,23 +11,36 @@ import org.flexlb.config.RoutingConfig.PrefillConfig;
 import org.flexlb.util.PriorityNormalizer;
 
 /** Cross-field validation for the public configuration contract. */
-final class FlexlbConfigValidator {
+public final class FlexlbConfigValidator {
 
-    static void validateDocumentShape(JsonNode document) {
+    public static void validateDocumentShape(JsonNode document) {
+        validateDocumentShape(document, document);
+    }
+
+    public static void validateDocumentShape(JsonNode document, JsonNode effectiveDocument) {
         JsonNode scheduler = document.path("scheduler");
         if (scheduler.isObject()) {
-            String type = scheduler.path("type").asText("QUEUE");
+            String type = effectiveDocument.path("scheduler").path("type").asText("QUEUE");
             if ("DIRECT".equals(type)) {
                 rejectFieldsExcept(scheduler, "scheduler", "type", "nettyMemoryReporter");
             } else if ("QUEUE".equals(type)) {
-                validateOrderingShape(scheduler.path("ordering"));
-                validateDecisionShape(scheduler.path("decision"));
+                validateOrderingShape(
+                        scheduler.path("ordering"),
+                        effectiveDocument.path("scheduler").path("ordering"));
+                validateDecisionShape(
+                        scheduler.path("decision"),
+                        effectiveDocument.path("scheduler").path("decision"));
             }
         }
 
         JsonNode dispatcher = document.path("dispatcher");
         if (dispatcher.isObject()) {
-            rejectFieldsExcept(dispatcher, "dispatcher", "type", "maxInflightPerPrefillWorker",
+            rejectFieldsExcept(
+                    dispatcher,
+                    "dispatcher",
+                    "type",
+                    "maxInflightPerPrefillWorker",
+                    "maxInflightPerEncoderWorker",
                     "fetchAttachTimeoutMs");
         }
 
@@ -58,11 +71,11 @@ final class FlexlbConfigValidator {
         }
     }
 
-    private static void validateOrderingShape(JsonNode ordering) {
+    private static void validateOrderingShape(JsonNode ordering, JsonNode effectiveOrdering) {
         if (!ordering.isObject()) {
             return;
         }
-        String type = ordering.path("type").asText("FIFO");
+        String type = effectiveOrdering.path("type").asText("FIFO");
         if ("FIFO".equals(type)) {
             rejectFieldsExcept(ordering, "scheduler.ordering", "type");
         } else if ("PRIORITY".equals(type)) {
@@ -86,11 +99,11 @@ final class FlexlbConfigValidator {
                 "is supported only when DECODE_ENGINE_OWNED is enabled");
     }
 
-    private static void validateDecisionShape(JsonNode decision) {
+    private static void validateDecisionShape(JsonNode decision, JsonNode effectiveDecision) {
         if (!decision.isObject()) {
             return;
         }
-        String type = decision.path("type").asText("FIXED_WINDOW");
+        String type = effectiveDecision.path("type").asText("FIXED_WINDOW");
         if ("SINGLE".equals(type)) {
             rejectFieldsExcept(decision, "scheduler.decision", "type");
         } else if ("FIXED_WINDOW".equals(type)) {
@@ -112,9 +125,11 @@ final class FlexlbConfigValidator {
         });
     }
 
-    static void validate(FlexlbConfig config) {
-        require(config.getSchemaVersion() == FlexlbConfig.CURRENT_SCHEMA_VERSION,
-                "schemaVersion", "must equal " + FlexlbConfig.CURRENT_SCHEMA_VERSION);
+    public static void validate(FlexlbConfig config) {
+        require(
+                config.getSchemaVersion() == FlexlbConfig.CURRENT_SCHEMA_VERSION,
+                "schemaVersion",
+                "must equal " + FlexlbConfig.CURRENT_SCHEMA_VERSION);
         require(config.getScheduler() != null, "scheduler", "is required");
         require(config.getScheduler().getType() != null, "scheduler.type", "is required");
         validateNettyMemoryReporter(config.getScheduler().getNettyMemoryReporter());
@@ -122,6 +137,11 @@ final class FlexlbConfigValidator {
         require(config.getRouter() != null, "router", "is required");
         require(config.getWorkerRegistry() != null, "workerRegistry", "is required");
         require(config.getObservability() != null, "observability", "is required");
+        require(config.getServiceDiscovery() != null, "serviceDiscovery", "is required");
+        require(config.getCacheMatching() != null, "cacheMatching", "is required");
+        require(config.getOptimizer() != null, "optimizer", "is required");
+        require(config.getConsistency() != null, "consistency", "is required");
+        positive(config.getFallbackBatchTokenCapacity(), "fallbackBatchTokenCapacity");
 
         if (!config.isDirect()) {
             validateQueue(config.queueScheduler());
@@ -131,6 +151,10 @@ final class FlexlbConfigValidator {
         validateRouting(config.getRouter());
         validateWorkerRegistry(config.getWorkerRegistry());
         validateObservability(config.getObservability());
+        validateServiceDiscovery(config.getServiceDiscovery());
+        validateCacheMatching(config.getCacheMatching());
+        validateOptimizer(config.getOptimizer());
+        validateConsistency(config.getConsistency());
         FlexlbConfig.GrpcServerConfig grpc = config.getGrpcServer();
         require(grpc != null, "grpcServer", "is required");
         nonNegative(grpc.getExecutorCoreSize(), "grpcServer.executorCoreSize");
@@ -196,8 +220,15 @@ final class FlexlbConfigValidator {
                                 && !preemption.getAllowedVictimStages().isEmpty(),
                         "scheduler.ordering.preemption.allowedVictimStages",
                         "must contain at least one stage when preemption is configured");
-                positive(preemption.getTimeoutMs(),
-                        "scheduler.ordering.preemption.timeoutMs");
+                positive(preemption.getTimeoutMs(), "scheduler.ordering.preemption.timeoutMs");
+                require(
+                        preemption.getEngineCancellation() != null,
+                        "scheduler.ordering.preemption.engineCancellation",
+                        "is required");
+                require(
+                        preemption.getEngineCancellation().getMode() != null,
+                        "scheduler.ordering.preemption.engineCancellation.mode",
+                        "is required");
             }
         } else {
             require(ordering.getPreemption() == null,
@@ -236,6 +267,11 @@ final class FlexlbConfigValidator {
             range(affinity.getMinPrefixHitPercent(), 0,
                     RoutingConfig.PERCENTAGE_SCALE,
                     "router.roles.prefill.cacheAffinity.minPrefixHitPercent");
+            range(
+                    affinity.getRemoteDiscount(),
+                    0,
+                    1,
+                    "router.roles.prefill.cacheAffinity.remoteDiscount");
         }
 
         require(routing.getRoles().getDecode() != null,
@@ -310,8 +346,12 @@ final class FlexlbConfigValidator {
     }
 
     private static void validateObservability(ObservabilityConfig observability) {
-        require(observability.getCacheHit() != null,
-                "observability.cacheHit", "is required");
+        require(observability.getLogging() != null, "observability.logging", "is required");
+        require(
+                observability.getLogging().getLevel() != null,
+                "observability.logging.level",
+                "is required");
+        require(observability.getCacheHit() != null, "observability.cacheHit", "is required");
         ObservabilityConfig.CacheHitConfig cacheHit = observability.getCacheHit();
         require(cacheHit.getRecentKeyWindow() != null,
                 "observability.cacheHit.recentKeyWindow", "is required");
@@ -324,6 +364,73 @@ final class FlexlbConfigValidator {
                             && !cacheHit.getTheoryLog().getPath().isBlank(),
                     "observability.cacheHit.theoryLog.path", "must not be blank");
         }
+    }
+
+    private static void validateServiceDiscovery(ServiceDiscoveryRuntimeConfig serviceDiscovery) {
+        positive(serviceDiscovery.getConnectTimeoutMs(), "serviceDiscovery.connectTimeoutMs");
+        positive(serviceDiscovery.getReadTimeoutMs(), "serviceDiscovery.readTimeoutMs");
+        positive(serviceDiscovery.getPollIntervalMs(), "serviceDiscovery.pollIntervalMs");
+        positive(serviceDiscovery.getMaxIdleConnections(), "serviceDiscovery.maxIdleConnections");
+        positive(serviceDiscovery.getKeepAliveDurationMs(), "serviceDiscovery.keepAliveDurationMs");
+    }
+
+    private static void validateCacheMatching(CacheMatchingConfig cacheMatching) {
+        if (!(cacheMatching instanceof KvcmCacheMatchingConfig kvcm)) {
+            return;
+        }
+        positive(kvcm.getRequestTimeoutMs(), "cacheMatching.requestTimeoutMs");
+        positive(kvcm.getLeaderRefreshIntervalMs(), "cacheMatching.leaderRefreshIntervalMs");
+        positive(kvcm.getHeartbeatFailureThreshold(), "cacheMatching.heartbeatFailureThreshold");
+        positive(kvcm.getQueryFailureThreshold(), "cacheMatching.queryFailureThreshold");
+        nonNegative(kvcm.getMaxQueryRetryCount(), "cacheMatching.maxQueryRetryCount");
+        positive(kvcm.getRecoverySuccessThreshold(), "cacheMatching.recoverySuccessThreshold");
+        nonNegative(kvcm.getGlobalKvsHostCount(), "cacheMatching.globalKvsHostCount");
+        require(
+                kvcm.getLocalStandby() != null,
+                "cacheMatching.localStandby",
+                "is required for KVCM");
+        validateLocalStandby(kvcm.getLocalStandby());
+    }
+
+    private static void validateLocalStandby(LocalStandbyConfig localStandby) {
+        positive(localStandby.getTtlMs(), "cacheMatching.localStandby.ttlMs");
+        positive(localStandby.getMinimumTtlMs(), "cacheMatching.localStandby.minimumTtlMs");
+        require(
+                localStandby.getMinimumTtlMs() <= localStandby.getTtlMs(),
+                "cacheMatching.localStandby.minimumTtlMs",
+                "must be less than or equal to ttlMs");
+        require(
+                Double.isFinite(localStandby.getTtlReductionStartRatio())
+                        && localStandby.getTtlReductionStartRatio() >= 0
+                        && localStandby.getTtlReductionStartRatio() <= 1,
+                "cacheMatching.localStandby.ttlReductionStartRatio",
+                "must be finite and in [0, 1]");
+        positive(localStandby.getMaximumEntries(), "cacheMatching.localStandby.maximumEntries");
+        require(
+                Double.isFinite(localStandby.getCapacityMultiplier())
+                        && localStandby.getCapacityMultiplier() >= 1,
+                "cacheMatching.localStandby.capacityMultiplier",
+                "must be finite and greater than or equal to 1");
+        positive(
+                localStandby.getAsyncQueueCapacity(),
+                "cacheMatching.localStandby.asyncQueueCapacity");
+    }
+
+    private static void validateOptimizer(OptimizerRuntimeConfig optimizer) {
+        positive(optimizer.getDiscoveryPollIntervalMs(), "optimizer.discoveryPollIntervalMs");
+    }
+
+    private static void validateConsistency(ConsistencyConfig consistency) {
+        if (!(consistency instanceof ZookeeperConsistencyConfig zookeeper)) {
+            return;
+        }
+        require(
+                zookeeper.getConnectString() != null && !zookeeper.getConnectString().isBlank(),
+                "consistency.connectString",
+                "must not be blank for ZOOKEEPER");
+        positive(zookeeper.getSessionTimeoutMs(), "consistency.sessionTimeoutMs");
+        positive(zookeeper.getConnectionTimeoutMs(), "consistency.connectionTimeoutMs");
+        positive(zookeeper.getMasterRefreshIntervalMs(), "consistency.masterRefreshIntervalMs");
     }
 
     private static void positive(long value, String field) {

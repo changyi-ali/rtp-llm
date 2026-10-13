@@ -1,23 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>org.flexlb</groupId>
         <artifactId>flexlb</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
-
     <artifactId>flexlb-common</artifactId>
-
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
-
     <dependencies>
         <dependency>
             <groupId>org.ow2.asm</groupId>
@@ -69,6 +64,19 @@
             <artifactId>protobuf-java</artifactId>
             <version>${protobuf.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.alibaba.nacos</groupId>
+            <artifactId>nacos-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-cbor</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>uk.org.webcompere</groupId>
+            <artifactId>system-stubs-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
@@ -79,9 +87,13 @@
                     <execution>
                         <id>test-fixtures</id>
                         <phase>test-compile</phase>
-                        <goals><goal>test-jar</goal></goals>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
                         <configuration>
-                            <includes><include>org/flexlb/testfixture/**</include></includes>
+                            <includes>
+                                <include>org/flexlb/testfixture/**</include>
+                            </includes>
                         </configuration>
                     </execution>
                 </executions>
@@ -96,5 +108,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>

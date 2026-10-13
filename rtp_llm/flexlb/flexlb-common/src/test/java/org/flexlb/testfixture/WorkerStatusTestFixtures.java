@@ -1,6 +1,7 @@
 package org.flexlb.testfixture;
 
 import org.flexlb.dao.master.WorkerStatus;
+import org.flexlb.dao.master.WorkerStatus.TaskTelemetry;
 import org.flexlb.dao.master.WorkerStatus.EngineObservation;
 import org.flexlb.dao.master.WorkerStatus.StatusObservation;
 import org.flexlb.dao.master.WorkerStatus.TaskObservation;
@@ -69,10 +70,15 @@ public final class WorkerStatusTestFixtures {
                 response.getDpSize(),
                 response.getTpSize(),
                 response.getDpRank(),
+                response.getCacheStatus() == null ? 0L : response.getCacheStatus().getBlockSize(),
+                response.getBlockHashLookaheadTokens(),
+                response.getCacheMatchRollbackBlocks(),
+                response.getKvCacheGroupMode(),
                 response.getMaxSeqLen(),
                 response.getMaxBatchTokensSize(),
                 response.getRunningQueryLen(),
-                response.getWaitingQueryLen());
+                response.getWaitingQueryLen(),
+                response.getLastStepMetrics());
         return worker.bindStatusObservation(
                 engine,
                 response.isAlive(),
@@ -96,22 +102,44 @@ public final class WorkerStatusTestFixtures {
         return Map.copyOf(frozen);
     }
 
+
     private static TaskObservation copyTask(TaskInfo task) {
-        return new TaskObservation(
-                task.getRequestId(),
-                task.getPrefixLength(),
-                task.getPrefillTime(),
-                task.getInputLength(),
-                task.getWaitingTime(),
-                task.getIterateCount(),
-                task.getEndTimeMs(),
-                task.getDpRank(),
-                task.getErrorCode(),
-                task.getErrorMessage(),
-                task.getBatchId(),
-                task.getPhase(),
-                task.getExecutionTimeMs(),
-                task.getPriorityPreemptionProgress());
-    }
+            return new TaskObservation(
+                    task.getRequestId(),
+                    task.getPrefixLength(),
+                    task.getPrefillTime(),
+                    task.getInputLength(),
+                    task.getWaitingTime(),
+                    task.getIterateCount(),
+                    task.getEndTimeMs(),
+                    task.getDpRank(),
+                    task.getErrorCode(),
+                    task.getErrorMessage(),
+                    task.getBatchId(),
+                    task.getPhase(),
+                    task.getExecutionTimeMs(),
+                    task.getPriorityPreemptionProgress(),
+                    new TaskTelemetry(
+                            task.isPrefixLengthValid(),
+                            task.getRequestReceivedTimeMs(),
+                            task.getInputQueueEnqueueTimeMs(),
+                            task.getInputQueueDrainTimeMs(),
+                            task.getWaitingEnteredTimeMs(),
+                            task.getRunningEnteredTimeMs(),
+                            task.getRemoteKvWaitMs(),
+                            task.getFirstTokenTimeMs(),
+                            task.getHbmLocalMatchTokens(),
+                            task.getRemoteKvAddedMatchTokens(),
+                            task.getFirstPrefillStepId(),
+                            task.getLastPrefillStepId(),
+                            task.getPrefillStepCount(),
+                            task.getPrefillNonfinalChunkTokensMin(),
+                            task.getPrefillNonfinalChunkTokensMax(),
+                            task.getCompletedPrefillTokens(),
+                            task.getRemainingPrefillTokens() < 0
+                                    ? null
+                                    : task.getRemainingPrefillTokens(),
+                            task.getLastCompletedPrefillStepId()));
+        }
 
 }

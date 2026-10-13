@@ -2,6 +2,7 @@ package org.flexlb.testfixture;
 
 import lombok.Data;
 import org.flexlb.dao.route.RoleType;
+import org.flexlb.enums.KvCacheGroupMode;
 
 import java.util.Map;
 
@@ -40,6 +41,14 @@ public class WorkerStatusResponse {
 
     private long dpRank;
 
+    private org.flexlb.dao.master.CacheStatus cacheStatus;
+
+    private int blockHashLookaheadTokens;
+
+    private int cacheMatchRollbackBlocks;
+
+    private KvCacheGroupMode kvCacheGroupMode = KvCacheGroupMode.UNSPECIFIED;
+
     private boolean alive;
 
     private long availableKvCacheTokens;
@@ -55,4 +64,5 @@ public class WorkerStatusResponse {
      * to this value cannot be admitted by the Engine.
      */
     private long maxBatchTokensSize;
+    private org.flexlb.dao.master.WorkerStatus.StepMetrics lastStepMetrics;
 }

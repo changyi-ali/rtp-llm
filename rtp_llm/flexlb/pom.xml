@@ -1,15 +1,12 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>2.7.18</version>
-        <relativePath/>
+        <relativePath />
     </parent>
-
-
     <groupId>org.flexlb</groupId>
     <artifactId>flexlb</artifactId>
     <packaging>pom</packaging>
@@ -17,14 +14,12 @@
     <name>FlexLB</name>
     <description>FlexLB - Intelligent Load Balancer for AI Model Inference</description>
     <url>https://github.com/flexlb/flexlb</url>
-
     <properties>
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.source>21</maven.compiler.source>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-
         <maven-antrun.version>3.1.0</maven-antrun.version>
         <maven-resources.version>3.3.1</maven-resources.version>
         <spring-boot.version>2.7.18</spring-boot.version>
@@ -40,8 +35,10 @@
         <!-- 5.3.x 的最新小版本，提供了一些 BUG 修复 -->
         <spring-framework.version>5.3.39</spring-framework.version>
         <commons-collections4.version>4.4</commons-collections4.version>
+        <jacoco.version>0.8.15</jacoco.version>
+        <jacocoArgLine />
+        <nacos.version>2.4.2</nacos.version>
     </properties>
-
     <modules>
         <module>flexlb-api</module>
         <module>flexlb-sync</module>
@@ -50,7 +47,6 @@
         <module>flexlb-cache</module>
         <module>flexlb-mock-engine</module>
     </modules>
-
     <!-- 此处定义所有模块都依赖的 -->
     <dependencies>
         <!-- Spring managed modules. -->
@@ -89,7 +85,6 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
     </dependencies>
-
     <dependencyManagement>
         <dependencies>
             <!-- 自定义管理 micrometer 的版本 -->
@@ -167,7 +162,6 @@
                 <artifactId>flexlb-grpc</artifactId>
                 <version>${project.version}</version>
             </dependency>
-
             <!-- Internal dependencies - only available when internal profile is activated -->
             <dependency>
                 <groupId>org.flexlb</groupId>
@@ -179,7 +173,6 @@
                 <artifactId>vipserver</artifactId>
                 <version>${project.version}</version>
             </dependency>
-
             <!-- util tools 依赖 start -->
             <dependency>
                 <groupId>com.google.guava</groupId>
@@ -240,11 +233,61 @@
                 <version>2.1.6</version>
                 <scope>test</scope>
             </dependency>
+            <dependency>
+                <groupId>org.flexlb</groupId>
+                <artifactId>dashscope-discovery</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-client</artifactId>
+                <version>${nacos.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
-
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                        <configuration>
+                            <propertyName>jacocoArgLine</propertyName>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.springframework.boot</groupId>
+                            <artifactId>spring-boot-configuration-processor</artifactId>
+                            <version>${spring-boot.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.openrewrite.maven</groupId>
                 <artifactId>rewrite-maven-plugin</artifactId>
@@ -338,6 +381,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
                         <argLine>
+                            @{jacocoArgLine}
                             --add-modules ALL-SYSTEM
                             --add-opens java.base/java.lang=ALL-UNNAMED
                             --add-opens java.base/java.lang.invoke=ALL-UNNAMED
@@ -361,7 +405,6 @@
             </plugins>
         </pluginManagement>
     </build>
-
     <profiles>
         <!-- Run FlexLB Sync performance regressions in a dedicated Maven invocation. -->
         <profile>
@@ -391,7 +434,6 @@
                 </plugins>
             </build>
         </profile>
-
         <!-- Run FlexLB API performance regressions in a separate Maven invocation. -->
         <profile>
             <id>api-performance-regression</id>
@@ -443,7 +485,6 @@
                 </plugins>
             </build>
         </profile>
-
         <!-- Internal profile - automatically activated when internal dependencies exists -->
         <profile>
             <id>internal</id>
@@ -456,7 +497,6 @@
                 <internal.modules.enabled>true</internal.modules.enabled>
             </properties>
         </profile>
-
         <!-- Default profile -->
         <profile>
             <id>opensource</id>
@@ -467,49 +507,48 @@
                 <internal.modules.enabled>false</internal.modules.enabled>
             </properties>
         </profile>
-
         <!-- Spotless code formatting profile -->
         <profile>
-      <id>spotless-check</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>com.diffplug.spotless</groupId>
-            <artifactId>spotless-maven-plugin</artifactId>
-            <version>3.0.0</version>
-            <configuration>
-              <java>
-                <includes>
-                  <include>src/main/java/**/*.java</include>
-                  <include>src/test/java/**/*.java</include>
-                  <include>tools/**/*.java</include>
-                </includes>
-                <googleJavaFormat>
-                  <version>1.28.0</version>
-                  <style>AOSP</style>
-                  <reorderImports>false</reorderImports>
-                  <formatJavadoc>false</formatJavadoc>
-                  <reflowLongStrings>false</reflowLongStrings>
-                </googleJavaFormat>
-                <!-- 移除无用的 import -->
-                <removeUnusedImports />
-                <importOrder>
-                  <!-- import 顺序：先第三方，然后 java|javax，之后是静态导入 -->
-                  <order>,|,javax|java,|,\#</order>
-                </importOrder>
-                <forbidWildcardImports />
-              </java>
-            </configuration>
-            <executions>
-              <execution>
-                <goals>
-                  <goal>check</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
+            <id>spotless-check</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.diffplug.spotless</groupId>
+                        <artifactId>spotless-maven-plugin</artifactId>
+                        <version>3.0.0</version>
+                        <configuration>
+                            <java>
+                                <includes>
+                                    <include>src/main/java/**/*.java</include>
+                                    <include>src/test/java/**/*.java</include>
+                                    <include>tools/**/*.java</include>
+                                </includes>
+                                <googleJavaFormat>
+                                    <version>1.28.0</version>
+                                    <style>AOSP</style>
+                                    <reorderImports>false</reorderImports>
+                                    <formatJavadoc>false</formatJavadoc>
+                                    <reflowLongStrings>false</reflowLongStrings>
+                                </googleJavaFormat>
+                                <!-- 移除无用的 import -->
+                                <removeUnusedImports />
+                                <importOrder>
+                                    <!-- import 顺序：先第三方，然后 java|javax，之后是静态导入 -->
+                                    <order>,|,javax|java,|,\#</order>
+                                </importOrder>
+                                <forbidWildcardImports />
+                            </java>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 </project>
