@@ -2,8 +2,8 @@ package org.flexlb.sync.runner;
 
 import org.flexlb.balance.endpoint.EndpointRegistry;
 import org.flexlb.balance.endpoint.WorkerEndpoint;
-import org.flexlb.cache.service.CacheAwareService;
-import org.flexlb.cache.service.DynamicCacheIntervalService;
+import org.flexlb.cache.match.CacheAwareService;
+import org.flexlb.cache.match.localsync.DynamicCacheIntervalService;
 import org.flexlb.dao.master.EndpointTrace.Stage;
 import org.flexlb.dao.master.WorkerHost;
 import org.flexlb.dao.master.WorkerStatus;
@@ -59,6 +59,7 @@ public class EngineSyncRunner implements Runnable {
     private final Long syncEngineStatusInterval;
 
     private final boolean cacheFullSnapshotDebugMode;
+    private final boolean kvcmEnabled;
 
     public EngineSyncRunner(String modelName,
                             WorkerDirectory workerDirectory,
@@ -75,6 +76,24 @@ public class EngineSyncRunner implements Runnable {
                             long syncCycleId,
                             Long syncEngineStatusInterval,
                             boolean cacheFullSnapshotDebugMode) {
+        this(modelName, workerDirectory, workerAddressService, statusCheckExecutor, cacheStatusExecutor, statusApplicationExecutor, engineHealthReporter, engineGrpcService, roleType, cacheAwareService, cacheIntervalService, syncRequestTimeoutMs, syncCycleId, syncEngineStatusInterval, cacheFullSnapshotDebugMode, false);
+    }
+
+    public EngineSyncRunner(String modelName,
+                            WorkerDirectory workerDirectory,
+                            WorkerAddressService workerAddressService,
+                            ExecutorService statusCheckExecutor,
+                            ExecutorService cacheStatusExecutor,
+                            ExecutorService statusApplicationExecutor,
+                            EngineHealthReporter engineHealthReporter,
+                            EngineGrpcService engineGrpcService,
+                            RoleType roleType,
+                            CacheAwareService cacheAwareService,
+                            DynamicCacheIntervalService cacheIntervalService,
+                            long syncRequestTimeoutMs,
+                            long syncCycleId,
+                            Long syncEngineStatusInterval,
+                            boolean cacheFullSnapshotDebugMode, boolean kvcmEnabled) {
 
         this.modelName = modelName;
         this.workerAddressService = workerAddressService;
@@ -94,6 +113,7 @@ public class EngineSyncRunner implements Runnable {
         this.syncCycleId = syncCycleId;
         this.syncEngineStatusInterval = syncEngineStatusInterval;
         this.cacheFullSnapshotDebugMode = cacheFullSnapshotDebugMode;
+        this.kvcmEnabled = kvcmEnabled;
     }
 
     @Override
@@ -131,7 +151,7 @@ public class EngineSyncRunner implements Runnable {
 
             // Remove if not in latest engine list
             Set<String> latestValidIpPorts = latestEngineWorkerList.stream()
-                    .map(WorkerHost::getIpPort)
+                    .map(WorkerHost::getLogicalIpPort)
                     .collect(Collectors.toSet());
             logger.debug("Current cached worker size: {}, latest worker list size: {}", cachedWorkerStatuses.size(), latestEngineWorkerList.size());
             for (Map.Entry<String, WorkerStatus> entry: cachedWorkerStatuses.entrySet()) {
@@ -155,11 +175,11 @@ public class EngineSyncRunner implements Runnable {
                     || syncCycleId % Math.max(cacheIntervalService.getCurrentIntervalMs()
                             / syncEngineStatusInterval, 1L) == 0L;
             for (WorkerHost host : latestEngineWorkerList) {
-                String workerIpPort = host.getIpPort();
+                String workerIpPort = host.getLogicalIpPort();
                 String site = host.getSite();
 
                 WorkerStatus workerStatus = discoverySucceeded
-                        ? getOrCreateWorkerStatus(workerIpPort, site, host.getGroup())
+                        ? getOrCreateWorkerStatus(host)
                         : cachedWorkerStatuses.get(workerIpPort);
 
                 if (workerStatus == null) { continue; }
@@ -182,7 +202,7 @@ public class EngineSyncRunner implements Runnable {
                                 workerStatus, statusPollLease, workerDirectory,
                                 engineHealthReporter, engineGrpcService,
                                 syncRequestTimeoutMs,
-                                cacheAwareService, statusApplicationExecutor);
+                                cacheAwareService, statusApplicationExecutor, host.getWorkerStatusPort());
                         statusPollLease.pollTrace().record(Stage.RUNNER_SUBMITTED);
                         statusCheckExecutor.submit(grpcWorkerStatusRunner);
                         handedOff = true;
@@ -198,7 +218,7 @@ public class EngineSyncRunner implements Runnable {
                     logger.debug("Skip status check for worker: {}, previous request in progress", workerIpPort);
                 }
 
-                if (!pollCacheThisCycle) { continue; }
+                if (kvcmEnabled || !pollCacheThisCycle) { continue; }
                 WorkerStatus.PollLease cachePollLease =
                         workerStatus.tryBeginCachePoll(syncCycleId);
                 if (cachePollLease != null) {
@@ -210,7 +230,7 @@ public class EngineSyncRunner implements Runnable {
                                 workerStatus, cachePollLease, workerDirectory,
                                 engineHealthReporter, engineGrpcService,
                                 cacheAwareService, cacheIntervalService, syncRequestTimeoutMs,
-                                cacheFullSnapshotDebugMode, cacheStatusExecutor);
+                                cacheFullSnapshotDebugMode, cacheStatusExecutor, host.getWorkerStatusPort());
                         cachePollLease.pollTrace().record(Stage.RUNNER_SUBMITTED);
                         cacheStatusExecutor.submit(grpcCacheStatusCheckRunner);
                         handedOff = true;
@@ -309,14 +329,14 @@ public class EngineSyncRunner implements Runnable {
         }
     }
 
-    private WorkerStatus getOrCreateWorkerStatus(
-            String workerIpPort,
-            String site,
-            String group) {
+    private WorkerStatus getOrCreateWorkerStatus(WorkerHost host) {
+        String workerIpPort = host.getLogicalIpPort();
+        String site = host.getSite();
+        String group = host.getGroup();
         while (true) {
             WorkerStatus workerStatus = workerDirectory.currentOrDiscover(
                     roleType, workerIpPort,
-                    () -> createWorkerStatus(workerIpPort, site, group));
+                    () -> WorkerStatus.createDiscovered(roleType, group, host.getIp(), host.getHttpPort(), host.getGrpcPort(), site, host.getDeploymentName(), host.getEngineIndex(), host.getMultiEngineNum()));
 
             // Unchanged discovery must not wait for local status reduction.
             if (workerStatus.getRole() == roleType && Objects.equals(workerStatus.getGroup(), group)
@@ -341,7 +361,7 @@ public class EngineSyncRunner implements Runnable {
                 if (!roleChanged && !groupChanged) {
                     // Site changes do not change scheduling ownership. Publish
                     // the discovery labels atomically on the same generation.
-                    workerStatus.updateDiscoveryLabels(site, group);
+                    workerStatus.updateDiscoveryLabels(site, group, host.getDeploymentName());
                     return workerStatus;
                 }
 

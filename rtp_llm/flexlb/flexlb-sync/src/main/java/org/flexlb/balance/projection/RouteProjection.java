@@ -66,9 +66,8 @@ public final class RouteProjection {
         long itemDurationMs(GroupPlanner.Item item);
 
         default long itemDurationMs(long seqLen, long hitCache) {
-            return itemDurationMs(new GroupPlanner.Item(
-                    0L, 0, 0L, 0L, Long.MAX_VALUE,
-                    seqLen, hitCache));
+            return itemDurationMs(
+                    new GroupPlanner.Item("", 0, 0L, 0L, Long.MAX_VALUE, seqLen, hitCache));
         }
 
         double batchPlanningDurationMs(List<GroupPlanner.Item> items);
@@ -80,11 +79,11 @@ public final class RouteProjection {
 
         long batchDurationMs(List<GroupPlanner.Item> items);
 
-        default long singletonBatchDurationMs(
-                long seqLen, long hitCache) {
-            return batchDurationMs(List.of(new GroupPlanner.Item(
-                    0L, 0, 0L, 0L, Long.MAX_VALUE,
-                    seqLen, hitCache)));
+        default long singletonBatchDurationMs(long seqLen, long hitCache) {
+            return batchDurationMs(
+                    List.of(
+                            new GroupPlanner.Item(
+                                    "", 0, 0L, 0L, Long.MAX_VALUE, seqLen, hitCache)));
         }
 
     }
@@ -121,7 +120,7 @@ public final class RouteProjection {
 
     /** Virtual request evaluated against one frozen endpoint snapshot. */
     public record Probe(
-            long requestId,
+            String requestId,
             int priority,
             long enqueueSeq,
             long enqueuedAtMs,
@@ -280,7 +279,7 @@ public final class RouteProjection {
      */
     public static CandidateView projectView(
             Inputs inputs,
-            long requestId,
+            String requestId,
             int priority,
             long enqueueSeq,
             long enqueuedAtMs,
@@ -311,7 +310,7 @@ public final class RouteProjection {
 
         /** Modeled queue work for ranking, excluding waits with no known release time. */
         public CandidateView projectView(
-                Inputs inputs, long requestId, int priority, long enqueueSeq, long enqueuedAtMs,
+                Inputs inputs, String requestId, int priority, long enqueueSeq, long enqueuedAtMs,
                 long expiresAtMs, long seqLen, long hitCache, long routingCacheMatchTokens,
                 PrefillTimePredictor.Evaluator evaluator,
                 DeliveryProjection deliveryProjection, long planningAtMs) {

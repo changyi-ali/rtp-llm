@@ -18,6 +18,9 @@ import org.flexlb.dao.route.RoleType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -228,7 +231,7 @@ class WorkerBatcherSchedulingTest {
             finish.countDown();
             var shared = first.get(2, TimeUnit.SECONDS);
             for (var follower : followers) {
-                org.junit.jupiter.api.Assertions.assertSame(shared, follower.get(2, TimeUnit.SECONDS));
+                assertSame(shared, follower.get(2, TimeUnit.SECONDS));
             }
         } finally {
             finish.countDown();
@@ -512,12 +515,14 @@ class WorkerBatcherSchedulingTest {
     }
 
     private WorkerBatcher runningRuntime(
-            FlexlbConfig config,
-            PrefillEndpoint endpoint,
-            DeliveryStrategy delivery) {
-        WorkerBatcher runtime = new WorkerBatcher(
-                "scheduling-test", endpoint, config, delivery,
-                mock(EndpointEventProjector.class));
+            FlexlbConfig config, PrefillEndpoint endpoint, DeliveryStrategy delivery) {
+        WorkerBatcher runtime =
+                new WorkerBatcher(
+                        "scheduling-test",
+                        endpoint,
+                        () -> config,
+                        delivery,
+                        mock(EndpointEventProjector.class));
         runtimes.add(runtime);
         runtime.start();
         return runtime;
@@ -550,7 +555,7 @@ class WorkerBatcherSchedulingTest {
             int priority,
             long enqueuedAtMs) {
         Request request = new Request();
-        request.setRequestId(requestId);
+        request.setRequestId(Long.toString(requestId));
         request.setPriority(priority);
         request.setSeqLen(10L);
         BalanceContext context = new BalanceContext(config);
@@ -582,6 +587,7 @@ class WorkerBatcherSchedulingTest {
     private static WorkerStatus stableStatus() {
         WorkerStatus status = mock(WorkerStatus.class);
         when(status.committedEngineObservation()).thenReturn(capacity());
+        when(status.getMetricIpPort()).thenReturn("10.0.0.1");
         return status;
     }
 

@@ -16,7 +16,7 @@ import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.LongPredicate;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -152,15 +152,16 @@ class EndpointCleanupDeadlockTest {
             long id = 991L;
             var context = RequestLifecycleTestSupport.context(config, id);
             var future = registry.register(context);
-            RequestSlot slot = registry.requestSlot(id);
+            RequestSlot slot = registry.requestSlot(Long.toString(id));
             CountDownLatch slotHeld = new CountDownLatch(1);
             CountDownLatch endpointHeld = new CountDownLatch(1);
             AtomicReference<Throwable> failure = new AtomicReference<>();
-            LongPredicate ownership = requestId -> {
-                // This callback is invoked by the real endpoint sweep under its real lock.
-                endpointHeld.countDown();
-                return registry.retainForSchedulerCleanup(requestId);
-            };
+            Predicate<String> ownership =
+                    requestId -> {
+                        // This callback is invoked by the real endpoint sweep under its real lock.
+                        endpointHeld.countDown();
+                        return registry.retainForSchedulerCleanup(requestId);
+                    };
             Runnable sweep;
             Runnable endpointOperation;
             if (kind.startsWith("decode")) {
@@ -170,7 +171,7 @@ class EndpointCleanupDeadlockTest {
                 DecodeEndpoint.ReservationHandle reservation;
                 try (var pin = endpoint.tryPinGeneration()) {
                     assertNotNull(pin);
-                    reservation = endpoint.reserveUnqueued(pin, id, 1L, 1L, 50);
+                    reservation = endpoint.reserveUnqueued(pin, Long.toString(id), 1L, 1L, 50);
                 }
                 assertNotNull(reservation);
                 var item = new ScheduledRequest(context, future,

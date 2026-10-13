@@ -11,6 +11,7 @@ import org.flexlb.config.FlexlbConfig;
 import org.flexlb.dao.BalanceContext;
 import org.flexlb.dao.loadbalance.Response;
 import org.flexlb.dao.loadbalance.StrategyErrorType;
+import org.flexlb.dao.route.RequestPhase;
 import org.flexlb.telemetry.FlexlbTrace;
 import org.flexlb.util.Logger;
 import org.springframework.stereotype.Component;
@@ -21,14 +22,13 @@ import java.util.concurrent.CompletableFuture;
 public class RouteService {
 
     private final RequestScheduler requestScheduler;
-    @Autowired
-    private DefaultRouter router;
-    private final RecentCacheKeyTraceReporter recentCacheKeyTraceReporter;
+    @Autowired private DefaultRouter router;
+    private final TheoryCacheHitReporter theoryCacheHitReporter;
 
-    public RouteService(RequestScheduler requestScheduler,
-                        RecentCacheKeyTraceReporter recentCacheKeyTraceReporter) {
+    public RouteService(
+            RequestScheduler requestScheduler, TheoryCacheHitReporter theoryCacheHitReporter) {
         this.requestScheduler = requestScheduler;
-        this.recentCacheKeyTraceReporter = recentCacheKeyTraceReporter;
+        this.theoryCacheHitReporter = theoryCacheHitReporter;
     }
 
     /**
@@ -58,20 +58,23 @@ public class RouteService {
         // Observe the scheduler-owned future without replacing it with a
         // dependent stage. Returning the exact source preserves external
         // cancel propagation and keeps one publication owner end to end.
-        resultFuture.whenComplete((result, throwable) -> {
-            if (throwable != null) {
-                return;
-            }
-            try {
-                balanceContext.setResponse(result);
-                if (result != null && result.isSuccess() && !balanceContext.getRequest().isVitRouteOnly()) {
-                    recentCacheKeyTraceReporter.report(balanceContext);
-                }
-            } catch (RuntimeException completionSideEffectFailure) {
-                Logger.warn("Route completion side effect failed: request_id={}",
-                        balanceContext.getRequestId(), completionSideEffectFailure);
-            }
-        });
+        resultFuture.whenComplete(
+                (result, throwable) -> {
+                    if (throwable != null) {
+                        return;
+                    }
+                    try {
+                        balanceContext.setResponse(result);
+                        if (result != null && result.isSuccess()) {
+                            theoryCacheHitReporter.report(balanceContext);
+                        }
+                    } catch (RuntimeException completionSideEffectFailure) {
+                        Logger.warn(
+                                "Route completion side effect failed: request_id={}",
+                                balanceContext.getRequestId(),
+                                completionSideEffectFailure);
+                    }
+                });
         return resultFuture;
     }
 
@@ -80,7 +83,7 @@ public class RouteService {
             return CompletableFuture.failedFuture(new IllegalStateException(
                     "RequestScheduler is required for the configured scheduling path"));
         }
-        if (!balanceContext.getRequest().isVitRouteOnly()
+        if (balanceContext.getRequestPhase() != RequestPhase.ENCODER
                 && balanceContext.getConfig().getDispatcher().requiresGenerateInput()
                 && !hasValidGenerateInput(balanceContext)) {
             Logger.warn("{} dispatcher rejected request without serialized generate input: request_id={}",
@@ -113,10 +116,20 @@ public class RouteService {
         return generateInput != null && !generateInput.isEmpty();
     }
 
-    public RequestState getRequestState(long requestId,
-                                                    long expectedBatchId) {
-        return requestScheduler == null ? null
+    public RequestState getRequestState(String requestId, long expectedBatchId) {
+        return requestScheduler == null
+                ? null
                 : requestScheduler.getRequestState(requestId, expectedBatchId);
+    }
+
+    /**
+     * Read the selected phase; callers omitting phase use Generation.
+     */
+    public RequestState getRequestState(
+            String requestId, long expectedBatchId, RequestPhase phase) {
+        return requestScheduler == null
+                ? null
+                : requestScheduler.getRequestState(requestId, expectedBatchId, phase);
     }
 
     /**
@@ -126,10 +139,19 @@ public class RouteService {
      * reducer there gives BATCH enqueue and QUEUE route-decision delivery the
      * same idempotency and generation-fencing semantics.</p>
      */
-    public RequestState cancelRequest(long requestId,
-                                                   long expectedBatchId,
-                                                   CancelReason reason) {
-        return requestScheduler == null ? null
+    public RequestState cancelRequest(String requestId, long expectedBatchId, CancelReason reason) {
+        return requestScheduler == null
+                ? null
                 : requestScheduler.cancelRequest(requestId, expectedBatchId, reason);
+    }
+
+    /**
+     * Cancel the selected phase locally. Encoder cancellation sends no engine RPC.
+     */
+    public RequestState cancelRequest(
+            String requestId, long expectedBatchId, CancelReason reason, RequestPhase phase) {
+        return requestScheduler == null
+                ? null
+                : requestScheduler.cancelRequest(requestId, expectedBatchId, reason, phase);
     }
 }

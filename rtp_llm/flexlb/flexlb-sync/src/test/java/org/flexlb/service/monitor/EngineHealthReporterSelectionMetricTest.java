@@ -1,7 +1,8 @@
 package org.flexlb.service.monitor;
 
 import io.netty.channel.EventLoopGroup;
-import org.flexlb.cache.monitor.CacheMetricsReporter;
+import org.flexlb.cache.telemetry.CacheMetricsReporter;
+import org.flexlb.config.CacheMatchConfiguration;
 import org.flexlb.dao.route.RoleType;
 import org.flexlb.dao.master.EndpointTrace.Stage;
 import org.flexlb.engine.grpc.EngineGrpcClient;
@@ -76,12 +77,13 @@ class EngineHealthReporterSelectionMetricTest {
     @Test
     void reportsSelectedPrefillEstimatesWithDeliveryMode() {
         reporter.reportPrefillSelectedEstimates(
-                RoleType.PREFILL, "10.0.0.1", "NON_BATCH", 1_250L, 400L);
+                RoleType.PREFILL, "10.0.0.1:8080@0", "NON_BATCH", 1_250L, 400L);
 
-        FlexMetricTags tags = FlexMetricTags.of(
-                "engineIp", "10.0.0.1",
-                "role", "PREFILL",
-                "delivery_mode", "NON_BATCH");
+        FlexMetricTags tags =
+                FlexMetricTags.of(
+                        "engineIp", "10.0.0.1:8080@0",
+                        "role", "PREFILL",
+                        "delivery_mode", "NON_BATCH");
         verify(monitor).report(PREFILL_SELECTED_ESTIMATED_TTFT_MS, tags, 1_250.0);
         verify(monitor).report(PREFILL_SELECTED_EXECUTION_TIME_MS, tags, 400.0);
     }

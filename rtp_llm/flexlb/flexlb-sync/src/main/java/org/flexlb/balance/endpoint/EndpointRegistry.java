@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
-import java.util.function.LongPredicate;
+import java.util.function.Predicate;
 
 @Component
 public class EndpointRegistry {
@@ -142,11 +142,13 @@ public class EndpointRegistry {
             endpointMaps() {
         EnumMap<RoleType, ConcurrentHashMap<String, WorkerEndpoint>> maps =
                 new EnumMap<>(RoleType.class);
-        for (RoleType role : List.of(
-                RoleType.PREFILL,
-                RoleType.DECODE,
-                RoleType.PDFUSION,
-                RoleType.VIT)) {
+        for (RoleType role :
+                List.of(
+                        RoleType.PREFILL,
+                        RoleType.DECODE,
+                        RoleType.PDFUSION,
+                        RoleType.ENCODER,
+                        RoleType.VIT)) {
             maps.put(role, new ConcurrentHashMap<>());
         }
         return maps;
@@ -780,15 +782,16 @@ public class EndpointRegistry {
         }
         prepareEndpointMetrics(role, status);
         return switch (role) {
-            case PREFILL, PDFUSION -> new PrefillEndpoint(
-                    status,
-                    configService.loadBalanceConfig(),
-                    deliveryStrategy,
-                    endpointEvents,
-                    reporter,
-                    placementAvailability);
-            case DECODE -> new DecodeEndpoint(
-                    status, endpointEvents, placementAvailability);
+            case PREFILL, PDFUSION ->
+                    new PrefillEndpoint(
+                            status,
+                            configService::loadBalanceConfig,
+                            deliveryStrategy,
+                            endpointEvents,
+                            reporter,
+                            placementAvailability);
+            case DECODE -> new DecodeEndpoint(status, endpointEvents, placementAvailability);
+            case ENCODER -> new EncoderEndpoint(status, endpointEvents);
             case VIT -> new WorkerEndpoint(status);
             case FRONTEND -> throw new AssertionError("validated above");
         };
@@ -796,10 +799,13 @@ public class EndpointRegistry {
 
     private void prepareEndpointMetrics(RoleType roleType, WorkerStatus status) {
         try {
-            reporter.prepareEndpointMetrics(roleType.name(), status.getIp());
+            reporter.prepareEndpointMetrics(roleType.name(), status.getMetricIpPort());
         } catch (RuntimeException telemetryFailure) {
-            Logger.warn("Endpoint metric preparation failed: role={}, engine={}",
-                    roleType, status.getIp(), telemetryFailure);
+            Logger.warn(
+                    "Endpoint metric preparation failed: role={}, engine={}",
+                    roleType,
+                    status.getMetricIpPort(),
+                    telemetryFailure);
         }
     }
 
@@ -1008,25 +1014,37 @@ public class EndpointRegistry {
      * @param retainForSchedulerCleanup current directory lookup, called under endpoint locks;
      *                                  must not acquire request locks or use a historical snapshot
      */
-    public void evictExpiredOrphans(long ttlMs,
-                                    LongPredicate retainForSchedulerCleanup) {
-        endpoints(RoleType.PREFILL).forEach((endpoint, worker) -> {
-            PrefillEndpoint ep = (PrefillEndpoint) worker;
-            logEndpointEviction(RoleType.PREFILL, endpoint,
-                    ep.evictExpiredInflight(
-                            ttlMs, retainForSchedulerCleanup), ttlMs);
-        });
-        endpoints(RoleType.DECODE).forEach((endpoint, worker) -> {
-            DecodeEndpoint ep = (DecodeEndpoint) worker;
-            logEndpointEviction(RoleType.DECODE, endpoint,
-                    ep.evictExpiredRequests(
-                            ttlMs, retainForSchedulerCleanup), ttlMs);
-        });
-        endpoints(RoleType.PDFUSION).forEach((endpoint, worker) -> {
-            PrefillEndpoint ep = (PrefillEndpoint) worker;
-            logEndpointEviction(RoleType.PDFUSION, endpoint,
-                    ep.evictExpiredBatches(ttlMs), ttlMs);
-        });
+    public void evictExpiredOrphans(long ttlMs, Predicate<String> retainForSchedulerCleanup) {
+        endpoints(RoleType.PREFILL)
+                .forEach(
+                        (endpoint, worker) -> {
+                            PrefillEndpoint ep = (PrefillEndpoint) worker;
+                            logEndpointEviction(
+                                    RoleType.PREFILL,
+                                    endpoint,
+                                    ep.evictExpiredInflight(ttlMs, retainForSchedulerCleanup),
+                                    ttlMs);
+                        });
+        endpoints(RoleType.DECODE)
+                .forEach(
+                        (endpoint, worker) -> {
+                            DecodeEndpoint ep = (DecodeEndpoint) worker;
+                            logEndpointEviction(
+                                    RoleType.DECODE,
+                                    endpoint,
+                                    ep.evictExpiredRequests(ttlMs, retainForSchedulerCleanup),
+                                    ttlMs);
+                        });
+        endpoints(RoleType.PDFUSION)
+                .forEach(
+                        (endpoint, worker) -> {
+                            PrefillEndpoint ep = (PrefillEndpoint) worker;
+                            logEndpointEviction(
+                                    RoleType.PDFUSION,
+                                    endpoint,
+                                    ep.evictExpiredBatches(ttlMs),
+                                    ttlMs);
+                        });
     }
 
     /**

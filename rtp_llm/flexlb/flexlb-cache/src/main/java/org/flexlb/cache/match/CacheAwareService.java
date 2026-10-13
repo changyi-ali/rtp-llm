@@ -69,6 +69,13 @@ public class CacheAwareService {
         return updateOrchestrator.updateFromWorkerStatus(workerStatus, pollTrace);
     }
 
+    public void removeEngineBlockCache(WorkerStatus worker, EndpointTrace trace) {
+        if (!worker.cacheMutationLock.isHeldByCurrentThread()) {
+            throw new IllegalStateException("Cache mutation requires the owning generation lock");
+        }
+        updateOrchestrator.removeEngineBlockCache(worker.getLogicalIpPort(), trace);
+    }
+
     public void removeEngineBlockCache(String engineIpPort) {
         updateOrchestrator.removeEngineBlockCache(engineIpPort);
     }

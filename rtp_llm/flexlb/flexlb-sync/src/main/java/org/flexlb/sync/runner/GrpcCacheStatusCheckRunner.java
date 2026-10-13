@@ -1,8 +1,8 @@
 package org.flexlb.sync.runner;
 
 import org.flexlb.cache.domain.WorkerCacheUpdateResult;
-import org.flexlb.cache.service.CacheAwareService;
-import org.flexlb.cache.service.DynamicCacheIntervalService;
+import org.flexlb.cache.match.CacheAwareService;
+import org.flexlb.cache.match.localsync.DynamicCacheIntervalService;
 import org.flexlb.dao.master.CacheStatus;
 import org.flexlb.dao.master.EndpointTrace;
 import org.flexlb.dao.master.EndpointTrace.Stage;
@@ -57,12 +57,25 @@ public class GrpcCacheStatusCheckRunner implements Runnable {
                                       long requestTimeoutMs,
                                       boolean fullSnapshotDebugMode,
                                       Executor callbackExecutor) {
+        this(modelName, ipPort, site, roleType, workerStatus, pollLease, workerDirectory, engineHealthReporter, engineGrpcService, cacheAwareService, cacheIntervalService, requestTimeoutMs, fullSnapshotDebugMode, callbackExecutor, workerStatus.getGrpcPort());
+    }
+
+    public GrpcCacheStatusCheckRunner(String modelName, String ipPort, String site, RoleType roleType,
+                                      WorkerStatus workerStatus,
+                                      WorkerStatus.PollLease pollLease,
+                                      WorkerDirectory workerDirectory,
+                                      EngineHealthReporter engineHealthReporter,
+                                      EngineGrpcService engineGrpcService,
+                                      CacheAwareService cacheAwareService,
+                                      DynamicCacheIntervalService cacheIntervalService,
+                                      long requestTimeoutMs,
+                                      boolean fullSnapshotDebugMode,
+                                      Executor callbackExecutor, int workerStatusPort) {
 
         this.ipPort = ipPort;
-        String[] split = ipPort.split(":");
-        this.ip = split[0];
+        this.ip = workerStatus.getIp();
         this.roleType = roleType;
-        this.grpcPort = CommonUtils.toGrpcPort(Integer.parseInt(split[1]));
+        this.grpcPort = workerStatusPort;
         this.modelName = modelName;
         this.workerStatus = workerStatus;
         this.workerDirectory = Objects.requireNonNull(
@@ -278,7 +291,7 @@ public class GrpcCacheStatusCheckRunner implements Runnable {
         WorkerCacheUpdateResult result;
         try {
             pollLease.pollTrace().record(Stage.CACHE_INDEX_UPDATE_BEGIN);
-            result = cacheAwareService.updateEngineBlockCache(workerStatus, pollLease.pollTrace());
+            result = cacheAwareService.updateFromWorkerStatus(workerStatus, pollLease.pollTrace());
         } catch (Exception e) {
             pollLease.pollTrace().record(Stage.CACHE_INDEX_UPDATE_FAILED, e);
             reportFailure(Stage.CACHE_INDEX_UPDATE_FAILED, e, BalanceStatusEnum.CACHE_UPDATE_FAILED);

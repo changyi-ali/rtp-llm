@@ -1,7 +1,6 @@
 package org.flexlb.service;
 
 import io.grpc.Server;
-import io.grpc.Status;
 import io.grpc.netty.NettyServerBuilder;
 import io.grpc.stub.StreamObserver;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -11,6 +10,8 @@ import org.flexlb.engine.grpc.EngineRpcService.CacheVersionPB;
 import org.flexlb.engine.grpc.EngineRpcService.MultimodalCacheStatusPB;
 import org.flexlb.engine.grpc.MultimodalRpcServiceGrpc;
 import org.flexlb.engine.grpc.RpcServiceGrpc;
+import org.flexlb.engine.grpc.client.EngineGrpcClient;
+import org.flexlb.engine.grpc.core.GrpcChannelFactory;
 import org.flexlb.engine.grpc.monitor.GrpcReporter;
 import org.flexlb.engine.grpc.nameresolver.CustomNameResolver;
 import org.flexlb.balance.endpoint.WorkerEndpoint;
@@ -99,7 +100,7 @@ class VitCacheDirectoryTest {
 
     private BalanceContext context(String... keys) {
         Request request = new Request();
-        request.setRequestId(123);
+        request.setRequestId("123");
         request.setCacheAffinityKeys(List.of(keys));
         request.setGenerateTimeout(30000);
         BalanceContext context = new BalanceContext(new FlexlbConfig());
@@ -430,6 +431,7 @@ class VitCacheDirectoryTest {
                 MultimodalCacheStatusPB.newBuilder().setWorkerInstance("large-worker")
                         .addAllKeys(keys).addAllGpuEmbeddingKeys(keys)).build();
         assertTrue(response.getSerializedSize() > 8 * 1024 * 1024);
+        assertTrue(response.getSerializedSize() < 16 * 1024 * 1024);
         var received = new AtomicReference<CacheVersionPB>();
         Server server = NettyServerBuilder.forPort(0)
                 .addService(new MultimodalRpcServiceGrpc.MultimodalRpcServiceImplBase() {
@@ -449,8 +451,13 @@ class VitCacheDirectoryTest {
                 }).build().start();
         var executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(2);
         var eventLoop = new NioEventLoopGroup(1);
-        var client = new EngineGrpcClient(mock(CustomNameResolver.class), executor, eventLoop,
-                mock(GrpcReporter.class), 1000, 5000);
+        var channelFactory = new GrpcChannelFactory(executor, eventLoop, 1000);
+        var client =
+                new EngineGrpcClient(
+                        mock(EngineAddressResolver.class),
+                        channelFactory,
+                        mock(GrpcReporter.class),
+                        mock(CacheMatchConfiguration.class));
         try {
             var request = CacheVersionPB.newBuilder().setNeedCacheKeys(true).build();
             for (int i = 0; i < 2; i++) {
@@ -458,13 +465,14 @@ class VitCacheDirectoryTest {
                 assertEquals(response, actual);
                 assertTrue(received.get().getNeedCacheKeys());
             }
-            CompletionException error = assertThrows(CompletionException.class,
-                    () -> client.getCacheStatusAsync("127.0.0.1", server.getPort(), request, 5000).join());
-            assertEquals(Status.Code.RESOURCE_EXHAUSTED, Status.fromThrowable(error).getCode());
+            assertEquals(
+                    response,
+                    client.getCacheStatusAsync("127.0.0.1", server.getPort(), request, 5000)
+                            .join());
             directory.replace(a, response.getMultimodalCache());
             assertEquals(a.getIp(), selector.select(context(keys.get(keys.size() - 1)), null).getServerIp());
         } finally {
-            client.shutdownChannelPool();
+            client.shutdown();
             server.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
             eventLoop.shutdownGracefully(0, 5, TimeUnit.SECONDS).sync();
             executor.shutdownNow();

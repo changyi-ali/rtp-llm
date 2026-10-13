@@ -104,10 +104,13 @@ class RouteProjectionTest {
 
     @Test
     void committedWorkOverlapsCollectionWindow() {
-        WorkSnapshot committed = work(
-                List.of(new WorkSnapshot.RequestWork(
-                        1L, WorkSnapshot.Phase.ENGINE_RUNNING, 100L)),
-                List.of(), 0L);
+        WorkSnapshot committed =
+                work(
+                        List.of(
+                                new WorkSnapshot.RequestWork(
+                                        "1", WorkSnapshot.Phase.ENGINE_RUNNING, 100L)),
+                        List.of(),
+                        0L);
 
         RouteProjection.Candidate result = project(
                 queue(false, constraints(4, 30L), List.of()),
@@ -150,18 +153,22 @@ class RouteProjectionTest {
 
     @Test
     void coherentWorkPhasesContributeTheirFrozenRemainingDuration() {
-        WorkSnapshot committed = work(
-                List.of(
-                        new WorkSnapshot.RequestWork(
-                                1L, WorkSnapshot.Phase.COMMITTED, 10L),
-                        new WorkSnapshot.RequestWork(
-                                2L, WorkSnapshot.Phase.ENGINE_QUEUED, 20L),
-                        new WorkSnapshot.RequestWork(
-                                3L, WorkSnapshot.Phase.ENGINE_RUNNING, 30L)),
-                List.of(new WorkSnapshot.BatchWork(
-                        7L, List.of(4L, 5L),
-                        WorkSnapshot.Phase.ENGINE_RUNNING, 40L)),
-                0L);
+        WorkSnapshot committed =
+                work(
+                        List.of(
+                                new WorkSnapshot.RequestWork(
+                                        "1", WorkSnapshot.Phase.COMMITTED, 10L),
+                                new WorkSnapshot.RequestWork(
+                                        "2", WorkSnapshot.Phase.ENGINE_QUEUED, 20L),
+                                new WorkSnapshot.RequestWork(
+                                        "3", WorkSnapshot.Phase.ENGINE_RUNNING, 30L)),
+                        List.of(
+                                new WorkSnapshot.BatchWork(
+                                        7L,
+                                        List.of("4", "5"),
+                                        WorkSnapshot.Phase.ENGINE_RUNNING,
+                                        40L)),
+                        0L);
 
         RouteProjection.Candidate result = project(
                 queue(false, false, constraints(1, 0L), List.of(), null),
@@ -239,12 +246,10 @@ class RouteProjectionTest {
 
     @Test
     void endpointCacheHitChangesServiceAndCandidateMetadata() {
-        RouteProjection.Probe coldProbe = new RouteProjection.Probe(
-                99L, 50, NOW_MS, Long.MAX_VALUE,
-                1_000L, 0L, 123L);
-        RouteProjection.Probe warmProbe = new RouteProjection.Probe(
-                100L, 50, NOW_MS, Long.MAX_VALUE,
-                1_000L, 800L, 900L);
+        RouteProjection.Probe coldProbe =
+                new RouteProjection.Probe("99", 50, NOW_MS, Long.MAX_VALUE, 1_000L, 0L, 123L);
+        RouteProjection.Probe warmProbe =
+                new RouteProjection.Probe("100", 50, NOW_MS, Long.MAX_VALUE, 1_000L, 800L, 900L);
 
         RouteProjection.Candidate cold = project(
                 queue(false, constraints(1, 0L), List.of()),
@@ -576,22 +581,25 @@ class RouteProjectionTest {
 
     @Test
     void duplicateIncomingIdentityIsRejectedAtActiveAndCommittedBoundaries() {
-        RouteProjection.Candidate active = project(
-                queue(false, constraints(1, 0L), List.of(
-                        item(99L, 50, 1L, 20L))),
-                noCommittedWork(), TOKEN_EVALUATOR,
-                probe(99L, 50, 20L, 0L),
-                ROUTE);
-        RouteProjection.Candidate committed = project(
-                queue(false, constraints(1, 0L), List.of()),
-                work(List.of(new WorkSnapshot.RequestWork(
-                                99L,
-                                WorkSnapshot.Phase.ENGINE_RUNNING,
-                                20L)),
-                        List.of(), 0L),
-                TOKEN_EVALUATOR,
-                probe(99L, 50, 20L, 0L),
-                ROUTE);
+        RouteProjection.Candidate active =
+                project(
+                        queue(false, constraints(1, 0L), List.of(item(99L, 50, 1L, 20L))),
+                        noCommittedWork(),
+                        TOKEN_EVALUATOR,
+                        probe(99L, 50, 20L, 0L),
+                        ROUTE);
+        RouteProjection.Candidate committed =
+                project(
+                        queue(false, constraints(1, 0L), List.of()),
+                        work(
+                                List.of(
+                                        new WorkSnapshot.RequestWork(
+                                                "99", WorkSnapshot.Phase.ENGINE_RUNNING, 20L)),
+                                List.of(),
+                                0L),
+                        TOKEN_EVALUATOR,
+                        probe(99L, 50, 20L, 0L),
+                        ROUTE);
 
         assertFalse(active.hasPrediction());
         assertEquals("INCOMING_ALREADY_ACTIVE", active.detail());

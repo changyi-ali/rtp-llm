@@ -116,7 +116,11 @@ public class LocalSyncCacheMatchProvider
     }
 
     public void removeEngineBlockCache(String engineIpPort) {
-        kvCacheManager.removeEngineCache(engineIpPort);
+        removeEngineBlockCache(engineIpPort, null);
+    }
+
+    public void removeEngineBlockCache(String engineIpPort, EndpointTrace trace) {
+        kvCacheManager.removeEngineCache(engineIpPort, trace);
     }
 
     private WorkerCacheUpdateResult buildSuccessResult(

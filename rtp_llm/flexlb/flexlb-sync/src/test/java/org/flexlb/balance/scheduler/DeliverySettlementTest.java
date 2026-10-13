@@ -100,7 +100,7 @@ class DeliverySettlementTest {
                 RoleType.DECODE, null, "127.0.0.1", 8080, 8081, null), new EndpointEventProjector(registry, mock(StatusFailureReporter.class))));
         DecodeEndpoint.ReservationHandle reservation;
         try (var pin = decode.tryPinGeneration()) {
-            reservation = decode.reserveUnqueued(pin, 2L, 1L, 1L, 50);
+            reservation = decode.reserveUnqueued(pin, "2", 1L, 1L, 50);
         }
         assertNotNull(reservation);
         Member member = member(2L, 12L, decode, reservation);
@@ -699,7 +699,7 @@ class DeliverySettlementTest {
         reject(member);
         Response response = member.item().future().get(1, TimeUnit.SECONDS);
         assertFalse(response.isSuccess());
-        RequestLifecycleTestSupport.awaitCondition(() -> registry.liveRequestCount() == 0);
+        RequestLifecycleTestSupport.awaitCondition(() -> registry.trackedRequestCount() == 0);
         assertSame(response, member.item().future().join());
         assertEquals(RequestState.Phase.FAILED, member.slot().snapshot().state());
         verify(member.item().decodeEp()).release(member.item().decodeReservation(), DecodeEndpoint.ReleaseReason.EXPIRED);
@@ -726,7 +726,11 @@ class DeliverySettlementTest {
     }
 
     private Member member(long id, long batchId) {
-        return member(id, batchId, mock(DecodeEndpoint.class), new DecodeEndpoint.ReservationHandle(1L, id, id));
+        return member(
+                id,
+                batchId,
+                mock(DecodeEndpoint.class),
+                new DecodeEndpoint.ReservationHandle(1L, Long.toString(id), id));
     }
 
     private Member member(long id, long batchId, DecodeEndpoint decode, DecodeEndpoint.ReservationHandle reservation) {
@@ -737,7 +741,7 @@ class DeliverySettlementTest {
         RequestLifecycleTestSupport.bindRoute(registry, new RequestLifecycleTestSupport.Registered(item, future));
         var claim = RequestLifecycleTestSupport.claimBatch(registry, item, batchId, () -> true);
         assertNotNull(claim);
-        return new Member(item, registry.requestSlot(id), claim);
+        return new Member(item, registry.requestSlot(Long.toString(id)), claim);
     }
 
     private void reject(Member member) {

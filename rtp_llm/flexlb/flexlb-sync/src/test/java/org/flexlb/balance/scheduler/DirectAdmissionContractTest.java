@@ -10,6 +10,7 @@ import org.flexlb.balance.endpoint.WorkerEndpoint;
 import org.flexlb.balance.eviction.EvictionManager;
 import org.flexlb.balance.strategy.CostBasedPrefillStrategy;
 import org.flexlb.balance.strategy.DecodeSelector;
+import org.flexlb.balance.strategy.EncoderStrategy;
 import org.flexlb.balance.strategy.RandomStrategy;
 import org.flexlb.balance.strategy.SelectedRole;
 import org.flexlb.config.ConfigService;
@@ -85,7 +86,9 @@ class DirectAdmissionContractTest {
                     assertEquals(StrategyErrorType.RESOURCE_EXHAUSTED.getErrorCode(), response.getCode()));
             assertEquals(prefillCapacity, fixture.prefill.observedRequestCount());
             assertEquals(prefillCapacity, fixture.decode.routingView().engineCapacityUsed());
-            assertEquals(48L * prefillCapacity, fixture.decode.routingView().inflightExpectedKv());
+            assertEquals(
+                    48L * prefillCapacity,
+                    fixture.decode.routingView().inputAndMaxOutputKvReserved());
             fixture.assertNoWaitingQueue();
             verify(fixture.requests, times(2)).commitRoute(any(), any());
             verify(fixture.prefillSelector, times(2)).select(any(), eq(RoleType.PREFILL), any());
@@ -103,11 +106,13 @@ class DirectAdmissionContractTest {
             assertEquals(1, fixture.prefill.observedRequestCount());
             assertEquals(0, fixture.prefill.getInflightBatchCount());
             assertEquals(1, fixture.decode.routingView().engineCapacityUsed());
-            assertEquals(48L, fixture.decode.routingView().inflightExpectedKv());
+            assertEquals(48L, fixture.decode.routingView().inputAndMaxOutputKvReserved());
             assertEquals(0, fixture.decode.resourceSnapshot().queuedCount());
-            assertEquals(1, fixture.scheduler.getInflightSize());
-            assertEquals(RequestState.Phase.ACKNOWLEDGED, fixture.scheduler.getRequestState(101L, 0L).state());
-            var reservation = fixture.decode.reservationHandle(101L);
+            assertEquals(1, fixture.scheduler.getTrackedRequestCount());
+            assertEquals(
+                    RequestState.Phase.ACKNOWLEDGED,
+                    fixture.scheduler.getRequestState("101", 0L).state());
+            var reservation = fixture.decode.reservationHandle("101");
             assertNotNull(reservation);
             assertThrows(IllegalStateException.class, () -> fixture.decode.release(
                     reservation,
@@ -115,13 +120,15 @@ class DirectAdmissionContractTest {
 
             fixture.observe(fixture.prefill, Map.of(), Map.of("101", task(101L, TaskPhase.RUNNING)));
             assertEquals(0L, fixture.prefill.observedRequestCount());
-            assertEquals(48L, fixture.decode.routingView().inflightExpectedKv(),
+            assertEquals(
+                    48L,
+                    fixture.decode.routingView().inputAndMaxOutputKvReserved(),
                     "Prefill completion must retain Decode ownership until its own observation");
             fixture.observe(fixture.decode, Map.of("101", task(101L, TaskPhase.RUNNING)), Map.of());
             assertTrue(fixture.decode.isAcceptedByEngine(reservation));
             fixture.observe(fixture.decode, Map.of(), Map.of("101", task(101L, TaskPhase.RUNNING)));
             assertEquals(0, fixture.decode.routingView().engineCapacityUsed());
-            assertEquals(0, fixture.scheduler.getInflightSize());
+            assertEquals(0, fixture.scheduler.getTrackedRequestCount());
             fixture.assertNoWaitingQueue();
         }
     }
@@ -132,7 +139,7 @@ class DirectAdmissionContractTest {
             DecodeEndpoint.ReservationHandle occupant;
             try (var pin = fixture.decode.tryPinGeneration()) {
                 assertNotNull(pin);
-                occupant = fixture.decode.reserve(pin, 999L, 32L, 48L, 50);
+                occupant = fixture.decode.reserve(pin, "999", 32L, 48L, 50);
             }
             assertNotNull(occupant);
             var acquired = fixture.decode.acquireDispatchPermit(occupant, new DecodeEndpoint.AdmissionCapacity(1L, 90L));
@@ -146,12 +153,12 @@ class DirectAdmissionContractTest {
             assertFalse(response.isSuccess());
             assertEquals(StrategyErrorType.RESOURCE_EXHAUSTED.getErrorCode(), response.getCode());
             fixture.assertNoPrefillOwnership();
-            assertNull(fixture.decode.reservationHandle(102L));
-            assertEquals(occupant, fixture.decode.reservationHandle(999L));
+            assertNull(fixture.decode.reservationHandle("102"));
+            assertEquals(occupant, fixture.decode.reservationHandle("999"));
             assertEquals(1, fixture.decode.routingView().engineCapacityUsed());
-            assertEquals(48L, fixture.decode.routingView().inflightExpectedKv());
+            assertEquals(48L, fixture.decode.routingView().inputAndMaxOutputKvReserved());
             assertEquals(0, fixture.decode.resourceSnapshot().queuedCount());
-            assertEquals(0, fixture.scheduler.getInflightSize());
+            assertEquals(0, fixture.scheduler.getTrackedRequestCount());
         }
     }
 
@@ -159,35 +166,51 @@ class DirectAdmissionContractTest {
     void decodeTerminalBetweenAcceptedPreparationAndSlotBindingCannotPublishASuccessfulRoute() throws Exception {
         try (Fixture fixture = new Fixture()) {
             AtomicBoolean raced = new AtomicBoolean();
-            doAnswer(call -> {
-                DecodeEndpoint.ReservationHandle reservation = call.getArgument(0);
-                assertEquals(103L, reservation.requestId());
-                fixture.assertItemNotBound(103L);
-                fixture.observe(fixture.decode, Map.of("103", task(103L, TaskPhase.KV_ALLOCATED)), Map.of());
-                var acquired = (DecodeEndpoint.EngineDispatchPermitAcquisition) call.callRealMethod();
-                assertEquals(DecodeEndpoint.EngineDispatchPermitAcquireStatus.ALREADY_ACCEPTED, acquired.status());
-                assertNotNull(acquired.permit(), "accepted preparation must retain an exact handoff capability");
-                fixture.observe(fixture.decode, Map.of(), Map.of("103", task(103L, TaskPhase.RUNNING)));
-                fixture.assertItemNotBound(103L);
-                raced.set(true);
-                return acquired;
-            }).when(fixture.decode).acquireDispatchPermit(any(), any());
+            doAnswer(
+                            call -> {
+                                DecodeEndpoint.ReservationHandle reservation = call.getArgument(0);
+                                assertEquals("103", reservation.requestId());
+                                fixture.assertItemNotBound(103L);
+                                fixture.observe(
+                                        fixture.decode,
+                                        Map.of("103", task(103L, TaskPhase.KV_ALLOCATED)),
+                                        Map.of());
+                                var acquired =
+                                        (DecodeEndpoint.EngineDispatchPermitAcquisition)
+                                                call.callRealMethod();
+                                assertEquals(
+                                        DecodeEndpoint.EngineDispatchPermitAcquireStatus
+                                                .ALREADY_ACCEPTED,
+                                        acquired.status());
+                                assertNotNull(
+                                        acquired.permit(),
+                                        "accepted preparation must retain an exact handoff capability");
+                                fixture.observe(
+                                        fixture.decode,
+                                        Map.of(),
+                                        Map.of("103", task(103L, TaskPhase.RUNNING)));
+                                fixture.assertItemNotBound(103L);
+                                raced.set(true);
+                                return acquired;
+                            })
+                    .when(fixture.decode)
+                    .acquireDispatchPermit(any(), any());
 
             Response response = fixture.scheduler.submit(fixture.context(103L)).get(2L, TimeUnit.SECONDS);
 
             assertTrue(raced.get());
             assertFalse(response.isSuccess(), "an already ended request must not receive a new successful route");
             fixture.assertNoPrefillOwnership();
-            assertNull(fixture.decode.reservationHandle(103L));
+            assertNull(fixture.decode.reservationHandle("103"));
             assertEquals(0, fixture.decode.routingView().engineCapacityUsed());
-            assertEquals(0L, fixture.decode.routingView().inflightExpectedKv());
-            assertEquals(0, fixture.scheduler.getInflightSize());
+            assertEquals(0L, fixture.decode.routingView().inputAndMaxOutputKvReserved());
+            assertEquals(0, fixture.scheduler.getTrackedRequestCount());
         }
     }
 
     private static TaskInfo task(long requestId, TaskPhase phase) {
         TaskInfo task = new TaskInfo();
-        task.setRequestId(requestId);
+        task.setRequestId(Long.toString(requestId));
         task.setInputLength(32L);
         task.setPhase(phase);
         return task;
@@ -235,26 +258,53 @@ class DirectAdmissionContractTest {
             observe(decode, Map.of(), Map.of());
             prefillSelector = mock(CostBasedPrefillStrategy.class);
             var decodeSelector = mock(DecodeSelector.class);
-            when(prefillSelector.select(any(), eq(RoleType.PREFILL), any())).thenAnswer(call -> {
-                var context = call.getArgument(0, BalanceContext.class);
-                var pin = prefill.tryPinGeneration();
-                assertNotNull(pin);
-                return PlacementResult.success(SelectedRole.prefill(pin,
-                        metadata(prefill, context.getRequestId()), 30_000L, prefill.placementVersion()));
-            });
-            when(decodeSelector.select(any(), any())).thenAnswer(call -> {
-                var request = call.getArgument(0, ScheduledRequest.DecodeBinding.class);
-                var pin = decode.tryPinGeneration();
-                assertNotNull(pin);
-                return PlacementResult.success(SelectedRole.decode(pin,
-                        metadata(decode, request.requestId()), decode.placementVersion()));
-            });
+            when(prefillSelector.select(any(), eq(RoleType.PREFILL), any()))
+                    .thenAnswer(
+                            call -> {
+                                var context = call.getArgument(0, BalanceContext.class);
+                                var pin = prefill.tryPinGeneration();
+                                assertNotNull(pin);
+                                return PlacementResult.success(
+                                        SelectedRole.prefill(
+                                                pin,
+                                                metadata(prefill, context.getRequestId()),
+                                                30_000L,
+                                                prefill.placementVersion()));
+                            });
+            when(decodeSelector.select(any(), any(), any()))
+                    .thenAnswer(
+                            call -> {
+                                var request =
+                                        call.getArgument(1, ScheduledRequest.DecodeBinding.class);
+                                var pin = decode.tryPinGeneration();
+                                assertNotNull(pin);
+                                return PlacementResult.success(
+                                        SelectedRole.decode(
+                                                pin,
+                                                metadata(decode, request.requestId()),
+                                                decode.placementVersion()));
+                            });
             var model = mock(ModelMetaConfig.class);
             when(model.requiredRoles()).thenReturn(List.of(RoleType.PREFILL, RoleType.DECODE));
-            var router = new DefaultRouter(prefillSelector, decodeSelector, mock(RandomStrategy.class), service, model);
-            scheduler = new RequestScheduler(service, router, endpoints, reporter, mock(EvictionManager.class),
-                    requests, placement);
-            runtime = new SchedulerRuntime(requests, endpoints, reporter, requestReporter, scheduler);
+            var router =
+                    new DefaultRouter(
+                            prefillSelector,
+                            decodeSelector,
+                            mock(RandomStrategy.class),
+                            mock(EncoderStrategy.class),
+                            service,
+                            model);
+            scheduler =
+                    new RequestScheduler(
+                            service,
+                            router,
+                            endpoints,
+                            reporter,
+                            mock(EvictionManager.class),
+                            requests,
+                            placement);
+            runtime =
+                    new SchedulerRuntime(requests, endpoints, reporter, requestReporter, scheduler);
         }
 
         private BalanceContext context(long requestId) {
@@ -277,7 +327,7 @@ class DirectAdmissionContractTest {
         }
 
         private void assertItemNotBound(long requestId) {
-            RequestSlot slot = requests.requestSlot(requestId);
+            RequestSlot slot = requests.requestSlot(Long.toString(requestId));
             assertNotNull(slot);
             synchronized (slot) {
                 assertNull(slot.activeItem(), "this Engine observation must precede item binding");
@@ -329,7 +379,7 @@ class DirectAdmissionContractTest {
             return response;
         }
 
-        private static ServerStatus metadata(WorkerEndpoint endpoint, long requestId) {
+        private static ServerStatus metadata(WorkerEndpoint endpoint, String requestId) {
             var result = new ServerStatus();
             result.setSuccess(true);
             result.setRequestId(requestId);

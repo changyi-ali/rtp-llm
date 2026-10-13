@@ -7,7 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.LongPredicate;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -23,7 +23,7 @@ public final class PrefillCleanupDeadlockFixture {
             new PrefillState(
                     lock,
                     PrefillActiveIndex.ordered(
-                            4, Comparator.comparingLong(ScheduledRequest::requestId)),
+                            4, Comparator.comparing(ScheduledRequest::requestId)),
                     clock::get,
                     () -> {});
     private final EndpointGenerationLifecycle generation =
@@ -59,12 +59,12 @@ public final class PrefillCleanupDeadlockFixture {
         clock.set(200);
     }
 
-    public void sweepBatches(LongPredicate retain) {
+    public void sweepBatches(Predicate<String> retain) {
         assertEquals(0, state.evictExpiredBatches(10L, retain));
         assertEquals(1, state.stats().batchCount());
     }
 
-    public void sweepIndividuals(LongPredicate retain) {
+    public void sweepIndividuals(Predicate<String> retain) {
         assertEquals(0, state.evictExpiredIndividuals(10L, retain));
         assertEquals(1, state.stats().individuallyOwnedRequests());
     }

@@ -95,17 +95,18 @@ final class StrategyTestSupport {
     }
 
     static WorkerEndpoint publishEndpoint(
-            EndpointRegistry registry,
-            RoleType role,
-            String address,
-            WorkerStatus source) {
-        WorkerStatus status = WorkerStatus.createDiscovered(
-                role,
-                source.getGroup(),
-                source.getIp(),
-                source.getPort(),
-                source.getGrpcPort(),
-                source.getSite());
+            EndpointRegistry registry, RoleType role, String address, WorkerStatus source) {
+        WorkerStatus status =
+                WorkerStatus.createDiscovered(
+                        role,
+                        source.getGroup(),
+                        source.getIp(),
+                        source.getPort(),
+                        source.getGrpcPort(),
+                        source.getSite(),
+                        source.getDeploymentName(),
+                        source.getEngineIndex(),
+                        source.getMultiEngineNum());
         WorkerStatus.StatusObservation observation =
                 status.bindStatusObservation(
                         source.committedEngineObservation(),

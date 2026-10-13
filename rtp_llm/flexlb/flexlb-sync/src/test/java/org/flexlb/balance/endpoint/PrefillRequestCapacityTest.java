@@ -307,13 +307,27 @@ class PrefillRequestCapacityTest {
         when(engine.runningTaskList()).thenReturn(tasks);
         when(engine.waitingQueryLen()).thenReturn(reportedActive);
         when(observation.engine()).thenReturn(engine);
-        when(observation.runningTasks()).thenReturn(tasks);
+        when(observation.activeTasks()).thenReturn(tasks);
         state.reconcileHeartbeat(observation);
     }
 
     private static WorkerStatus.TaskObservation observed(long id) {
-        return new WorkerStatus.TaskObservation(id, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, "", 0L,
-                TaskPhase.RUNNING, 0L, PriorityPreemptionProgress.NONE);
+        return new WorkerStatus.TaskObservation(
+                Long.toString(id),
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                "",
+                0L,
+                TaskPhase.RUNNING,
+                0L,
+                PriorityPreemptionProgress.NONE,
+                mock(WorkerStatus.TaskTelemetry.class));
     }
 
     private static ScheduledRequest item(long id) {

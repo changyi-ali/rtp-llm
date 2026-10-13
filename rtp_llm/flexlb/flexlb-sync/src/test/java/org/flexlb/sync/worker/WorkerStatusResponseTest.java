@@ -1,5 +1,6 @@
 package org.flexlb.sync.worker;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import org.flexlb.dao.master.WorkerStatus;
 import org.flexlb.dao.master.WorkerStatus.StatusObservation;
 import org.flexlb.dao.route.RoleType;
@@ -31,48 +32,47 @@ class WorkerStatusResponseTest {
 
     @Test
     void converterReadsLegacyWorkerRoleAndTaskState() {
-        EngineRpcService.TaskInfoPB oldWaiting = EngineRpcService.TaskInfoPB.newBuilder()
-                .setRequestId(1L)
-                .setIsWaiting(true)
-                .build();
+        EngineRpcService.TaskInfoPB oldWaiting =
+                EngineRpcService.TaskInfoPB.newBuilder().setRequestId(1).setIsWaiting(true).build();
         // An old proto3 writer omits is_waiting=false from the wire. The new
         // reader must use the running_task_info container as the fallback.
-        EngineRpcService.TaskInfoPB oldRunning = EngineRpcService.TaskInfoPB.newBuilder()
-                .setRequestId(2L)
-                .build();
-        EngineRpcService.WorkerStatusPB proto = EngineRpcService.WorkerStatusPB.newBuilder()
-                .setRole("RoleType.PREFILL")
-                .addRunningTaskInfo(oldWaiting)
-                .addRunningTaskInfo(oldRunning)
-                .build();
+        EngineRpcService.TaskInfoPB oldRunning =
+                EngineRpcService.TaskInfoPB.newBuilder().setRequestId(2).build();
+        EngineRpcService.WorkerStatusPB proto =
+                EngineRpcService.WorkerStatusPB.newBuilder()
+                        .setRole("RoleType.PREFILL")
+                        .addRunningTaskInfo(oldWaiting)
+                        .addRunningTaskInfo(oldRunning)
+                        .build();
 
         StatusObservation response = convert(proto);
 
         assertEquals(RoleType.PREFILL, response.role());
-        assertEquals(org.flexlb.enums.TaskPhase.PENDING,
-                response.runningTasks().get("1").phase());
-        assertEquals(org.flexlb.enums.TaskPhase.RUNNING,
-                response.runningTasks().get("2").phase());
+        assertEquals(org.flexlb.enums.TaskPhase.PENDING, response.activeTasks().get("1").phase());
+        assertEquals(org.flexlb.enums.TaskPhase.RUNNING, response.activeTasks().get("2").phase());
     }
 
     @Test
     void converterReadsAndValidatesDualWorkerStatus() {
-        EngineRpcService.TaskInfoPB task = EngineRpcService.TaskInfoPB.newBuilder()
-                .setRequestId(3L)
-                .setIsWaiting(true)
-                .setPhase(EngineRpcService.TaskPhase.TASK_PHASE_KV_ALLOCATED)
-                .build();
-        EngineRpcService.WorkerStatusPB proto = EngineRpcService.WorkerStatusPB.newBuilder()
-                .setRole("DECODE")
-                .setRoleType(EngineRpcService.RoleTypePB.ROLE_TYPE_DECODE)
-                .addRunningTaskInfo(task)
-                .build();
+        EngineRpcService.TaskInfoPB task =
+                EngineRpcService.TaskInfoPB.newBuilder()
+                        .setRequestId(3)
+                        .setRequestIdStr("3")
+                        .setIsWaiting(true)
+                        .setPhase(EngineRpcService.TaskPhase.TASK_PHASE_KV_ALLOCATED)
+                        .build();
+        EngineRpcService.WorkerStatusPB proto =
+                EngineRpcService.WorkerStatusPB.newBuilder()
+                        .setRole("DECODE")
+                        .setRoleType(EngineRpcService.RoleTypePB.ROLE_TYPE_DECODE)
+                        .addRunningTaskInfo(task)
+                        .build();
 
         StatusObservation response = convert(proto);
 
         assertEquals(RoleType.DECODE, response.role());
-        assertEquals(org.flexlb.enums.TaskPhase.KV_ALLOCATED,
-                response.runningTasks().get("3").phase());
+        assertEquals(
+                org.flexlb.enums.TaskPhase.KV_ALLOCATED, response.activeTasks().get("3").phase());
     }
 
     @Test
@@ -90,64 +90,71 @@ class WorkerStatusResponseTest {
         // e0 reserved field 9 and therefore sent no is_waiting value. A new
         // reader observes the proto3 default false, which must not invalidate
         // the explicit phase carried in field 12.
-        EngineRpcService.TaskInfoPB receivedFromE0 = EngineRpcService.TaskInfoPB.parseFrom(
-                EngineRpcService.TaskInfoPB.newBuilder()
-                        .setRequestId(4L)
-                        .setPhase(EngineRpcService.TaskPhase.TASK_PHASE_RECEIVED)
-                        .build()
-                        .toByteArray());
-        EngineRpcService.TaskInfoPB kvAllocatedFromE0 = EngineRpcService.TaskInfoPB.parseFrom(
-                EngineRpcService.TaskInfoPB.newBuilder()
-                        .setRequestId(5L)
-                        .setPhase(EngineRpcService.TaskPhase.TASK_PHASE_KV_ALLOCATED)
-                        .build()
-                        .toByteArray());
-        EngineRpcService.WorkerStatusPB status = EngineRpcService.WorkerStatusPB.newBuilder()
-                .setRole("PREFILL")
-                .addRunningTaskInfo(receivedFromE0)
-                .addRunningTaskInfo(kvAllocatedFromE0)
-                .build();
+        EngineRpcService.TaskInfoPB receivedFromE0 =
+                EngineRpcService.TaskInfoPB.parseFrom(
+                        EngineRpcService.TaskInfoPB.newBuilder()
+                                .setRequestId(4)
+                                .setPhase(EngineRpcService.TaskPhase.TASK_PHASE_RECEIVED)
+                                .build()
+                                .toByteArray());
+        EngineRpcService.TaskInfoPB kvAllocatedFromE0 =
+                EngineRpcService.TaskInfoPB.parseFrom(
+                        EngineRpcService.TaskInfoPB.newBuilder()
+                                .setRequestId(5)
+                                .setPhase(EngineRpcService.TaskPhase.TASK_PHASE_KV_ALLOCATED)
+                                .build()
+                                .toByteArray());
+        EngineRpcService.WorkerStatusPB status =
+                EngineRpcService.WorkerStatusPB.newBuilder()
+                        .setRole("PREFILL")
+                        .addRunningTaskInfo(receivedFromE0)
+                        .addRunningTaskInfo(kvAllocatedFromE0)
+                        .build();
 
         StatusObservation response = convert(status);
 
-        assertEquals(org.flexlb.enums.TaskPhase.RECEIVED,
-                response.runningTasks().get("4").phase());
-        assertEquals(org.flexlb.enums.TaskPhase.KV_ALLOCATED,
-                response.runningTasks().get("5").phase());
+        assertEquals(org.flexlb.enums.TaskPhase.RECEIVED, response.activeTasks().get("4").phase());
+        assertEquals(
+                org.flexlb.enums.TaskPhase.KV_ALLOCATED, response.activeTasks().get("5").phase());
     }
 
     @Test
     void converterKeepsExplicitPhaseWhenLegacyFlagDisagrees() {
-        EngineRpcService.TaskInfoPB runningButWaiting = EngineRpcService.TaskInfoPB.newBuilder()
-                .setRequestId(6L)
-                .setIsWaiting(true)
-                .setPhase(EngineRpcService.TaskPhase.TASK_PHASE_RUNNING)
-                .build();
-        EngineRpcService.WorkerStatusPB status = EngineRpcService.WorkerStatusPB.newBuilder()
-                .setRole("PREFILL")
-                .addRunningTaskInfo(runningButWaiting)
-                .build();
+        EngineRpcService.TaskInfoPB runningButWaiting =
+                EngineRpcService.TaskInfoPB.newBuilder()
+                        .setRequestId(6)
+                        .setIsWaiting(true)
+                        .setPhase(EngineRpcService.TaskPhase.TASK_PHASE_RUNNING)
+                        .build();
+        EngineRpcService.WorkerStatusPB status =
+                EngineRpcService.WorkerStatusPB.newBuilder()
+                        .setRole("PREFILL")
+                        .addRunningTaskInfo(runningButWaiting)
+                        .build();
 
         StatusObservation response = convert(status);
 
-        assertEquals(org.flexlb.enums.TaskPhase.RUNNING,
-                response.runningTasks().get("6").phase());
+        assertEquals(org.flexlb.enums.TaskPhase.RUNNING, response.activeTasks().get("6").phase());
     }
 
     @Test
     void converterPreservesAuthoritativePriorityCanceledTerminal() {
-        EngineRpcService.TaskInfoPB canceled = EngineRpcService.TaskInfoPB.newBuilder()
-                .setRequestId(8429001L)
-                .setPriorityPreemptionProgress(EngineRpcService.PriorityPreemptionProgressPB
-                        .PRIORITY_PREEMPTION_CANCELED)
-                .setErrorInfo(EngineRpcService.ErrorDetailsPB.newBuilder()
-                        .setErrorCode(8429L)
-                        .setErrorMessage("preempted by a higher-priority request"))
-                .build();
-        EngineRpcService.WorkerStatusPB proto = EngineRpcService.WorkerStatusPB.newBuilder()
-                .setRoleType(EngineRpcService.RoleTypePB.ROLE_TYPE_PREFILL)
-                .addFinishedTaskList(canceled)
-                .build();
+        EngineRpcService.TaskInfoPB canceled =
+                EngineRpcService.TaskInfoPB.newBuilder()
+                        .setRequestId(8429001)
+                        .setPriorityPreemptionProgress(
+                                EngineRpcService.PriorityPreemptionProgressPB
+                                        .PRIORITY_PREEMPTION_CANCELED)
+                        .setErrorInfo(
+                                EngineRpcService.ErrorDetailsPB.newBuilder()
+                                        .setErrorCode(8429L)
+                                        .setErrorMessage("preempted by a higher-priority request"))
+                        .build();
+        EngineRpcService.WorkerStatusPB proto =
+                EngineRpcService.WorkerStatusPB.newBuilder()
+                        .setRoleType(EngineRpcService.RoleTypePB.ROLE_TYPE_PREFILL)
+                        .addFinishedTaskList(canceled)
+                        .build();
 
         StatusObservation response = convert(proto);
         var converted = response.finishedTasks().get("8429001");

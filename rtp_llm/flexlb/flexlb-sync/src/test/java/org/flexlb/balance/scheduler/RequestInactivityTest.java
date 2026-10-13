@@ -61,7 +61,7 @@ class RequestInactivityTest {
 
         BalanceContext context = RequestLifecycleTestSupport.context(config, REQUEST_ID);
         CompletableFuture<Response> future = registry.register(context);
-        slot = registry.requestSlot(REQUEST_ID);
+        slot = registry.requestSlot(Long.toString(REQUEST_ID));
         registeredAtMs = slot.createdAtMs();
         prefill = mock(PrefillEndpoint.class);
         decode = mock(DecodeEndpoint.class);
@@ -69,9 +69,18 @@ class RequestInactivityTest {
         prefillStatus.setRole(RoleType.PREFILL);
         prefillStatus.setServerIp("127.0.0.1");
         prefillStatus.setGrpcPort(8081);
-        var reservation = new DecodeEndpoint.ReservationHandle(1L, REQUEST_ID, 1L);
-        item = new ScheduledRequest(context, future, new Response(), prefillStatus, null,
-                prefill, decode, reservation, registeredAtMs);
+        var reservation = new DecodeEndpoint.ReservationHandle(1L, Long.toString(REQUEST_ID), 1L);
+        item =
+                new ScheduledRequest(
+                        context,
+                        future,
+                        new Response(),
+                        prefillStatus,
+                        null,
+                        prefill,
+                        decode,
+                        reservation,
+                        registeredAtMs);
         var registered = new RequestLifecycleTestSupport.Registered(item, future);
         RequestLifecycleTestSupport.bind(registry, registered);
         claim = RequestLifecycleTestSupport.claimBatch(registry, item, 1L, () -> true);
@@ -150,8 +159,10 @@ class RequestInactivityTest {
     @Test
     void anEarlierClientCancellationDoesNotDisableInactivityExpiration() throws Exception {
         acknowledgeDelivery();
-        assertEquals(RequestState.Phase.CANCEL_REQUESTED,
-                registry.cancelRequest(REQUEST_ID, 0L, CancelReason.CLIENT_CANCELLED).state());
+        assertEquals(
+                RequestState.Phase.CANCEL_REQUESTED,
+                registry.cancelRequest(Long.toString(REQUEST_ID), 0L, CancelReason.CLIENT_CANCELLED)
+                        .state());
         assertLiveAndCharged();
 
         synchronized (slot) {
@@ -220,7 +231,7 @@ class RequestInactivityTest {
     }
 
     private void assertLiveAndCharged() {
-        assertEquals(1, registry.liveRequestCount());
+        assertEquals(1, registry.trackedRequestCount());
         synchronized (slot) {
             assertSame(item.execution(), slot.activeItem());
             assertFalse(slot.snapshot().state().isTerminal());
@@ -237,8 +248,9 @@ class RequestInactivityTest {
     }
 
     private void assertExpiredAndReleased(RequestState.Phase expectedState) {
-        assertEquals(0, registry.liveRequestCount());
-        assertEquals(expectedState, registry.getRequestState(REQUEST_ID, 0L).state());
+        assertEquals(0, registry.trackedRequestCount());
+        assertEquals(
+                expectedState, registry.getRequestState(Long.toString(REQUEST_ID), 0L).state());
         synchronized (slot) {
             assertFalse(slot.isLiveGeneration());
         }

@@ -17,10 +17,15 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Real endpoint accounting used by delivery callback ordering tests. */
 public final class DeliverySettlementTestSupport {
     private final ReentrantLock lock = new ReentrantLock();
-    public final PrefillState prefill = new PrefillState(lock,
-            PrefillActiveIndex.ordered(4, Comparator.comparingLong(ScheduledRequest::requestId)),
-            System::currentTimeMillis, () -> { });
-    private final EndpointGenerationLifecycle generation = new EndpointGenerationLifecycle(() -> { });
+    public final PrefillState prefill =
+            new PrefillState(
+                    lock,
+                    PrefillActiveIndex.ordered(
+                            4, Comparator.comparing(ScheduledRequest::requestId)),
+                    System::currentTimeMillis,
+                    () -> {});
+    private final EndpointGenerationLifecycle generation =
+            new EndpointGenerationLifecycle(() -> {});
 
     public void enqueue(ScheduledRequest item) {
         lock.lock();
@@ -90,7 +95,7 @@ public final class DeliverySettlementTestSupport {
 
     public static void decodeStatus(DecodeEndpoint endpoint, long requestId, boolean finished) {
         TaskInfo task = new TaskInfo();
-        task.setRequestId(requestId);
+        task.setRequestId(Long.toString(requestId));
         task.setPhase(finished ? null : TaskPhase.KV_ALLOCATED);
         WorkerStatusResponse response = new WorkerStatusResponse();
         var tasks = Map.of(Long.toString(requestId), task);

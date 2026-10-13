@@ -2,7 +2,7 @@ package org.flexlb.sync.runner;
 
 import org.flexlb.balance.endpoint.EndpointRegistry;
 import org.flexlb.balance.endpoint.WorkerEndpoint;
-import org.flexlb.cache.service.CacheAwareService;
+import org.flexlb.cache.match.CacheAwareService;
 import org.flexlb.dao.master.EndpointTrace;
 import org.flexlb.dao.master.EndpointTrace.Stage;
 import org.flexlb.dao.master.WorkerStatus;
@@ -54,10 +54,22 @@ public class GrpcWorkerStatusRunner implements Runnable {
                                   long syncRequestTimeoutMs,
                                   CacheAwareService cacheAwareService,
                                   Executor callbackExecutor) {
+        this(modelName, ipPort, roleType, workerStatus, pollLease, workerDirectory, engineHealthReporter, engineGrpcService, syncRequestTimeoutMs, cacheAwareService, callbackExecutor, workerStatus.getGrpcPort());
+    }
+
+    public GrpcWorkerStatusRunner(String modelName, String ipPort,
+                                  RoleType roleType,
+                                  WorkerStatus workerStatus,
+                                  WorkerStatus.PollLease pollLease,
+                                  WorkerDirectory workerDirectory,
+                                  EngineHealthReporter engineHealthReporter,
+                                  EngineGrpcService engineGrpcService,
+                                  long syncRequestTimeoutMs,
+                                  CacheAwareService cacheAwareService,
+                                  Executor callbackExecutor, int workerStatusPort) {
         this.ipPort = ipPort;
-        String[] split = ipPort.split(":");
-        this.ip = split[0];
-        this.grpcPort = CommonUtils.toGrpcPort(Integer.parseInt(split[1]));
+        this.ip = workerStatus.getIp();
+        this.grpcPort = workerStatusPort;
         this.modelName = modelName;
         this.workerStatus = workerStatus;
         this.pollLease = Objects.requireNonNull(pollLease, "pollLease");
