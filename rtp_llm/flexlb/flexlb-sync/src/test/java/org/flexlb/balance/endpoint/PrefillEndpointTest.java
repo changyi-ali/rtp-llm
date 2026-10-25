@@ -1545,7 +1545,7 @@ class PrefillEndpointTest {
         response.setFinishedTaskInfo(Map.of(Long.toString(requestId),
                 taskInfo(requestId, batchId, null, 500, 0)));
         response.setRunningTaskInfo(Map.of());
-        EndpointTestSupport.applyStatus(target, response);
+        EndpointTestSupport.applyStatus(target, response).run();
     }
 
     private static void reportSuccessfulBatchMember(
