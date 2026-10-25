@@ -115,3 +115,16 @@ py_test(
     data = ["//:th_transformer_config"],
     deps = ["//rtp_llm:config", "//rtp_llm:ops"],
 )
+
+py_test(
+    name = "engine_config_test",
+    srcs = [
+        "engine_config_test.py",
+    ],
+    data = [
+        "//:th_transformer_config",
+    ],
+    deps = [
+        "//rtp_llm:config_ops",
+    ],
+)
