@@ -34,13 +34,28 @@ py_test(
 )
 
 _ENGRAM_SM100_TESTS = [
-    "test_engram",
     "test_engram_cpu",
     "test_engram_cpu_deadline",
     "test_engram_cpu_native_packed",
     "test_engram_cuda",
     "test_engram_packed",
     "test_engram_prefetch",
+]
+
+# CPU-only contract tests: no CUDA context, no GPU launches (docstrings and
+# code audited; CUDA references are mocks only). They drop the SM100 GPU pin
+# and run on the ARM CPU pool via the cuda13_arm default exec properties, with
+# GPU_COUNT=0 so the device_resource wrapper skips CUDA probes and GPU locks.
+# The SM100_ARM_CU13 tag is kept on purpose: lane selection uses a positive
+# tag filter, while worker routing comes from exec_properties only.
+_CPU_ONLY_TESTS = [
+    "test_cache_specs",
+    "test_cache_tags",
+    "test_deep_gemm_scratch",
+    "test_engram",
+    "test_flash_mla_heads",
+    "test_v41_delayed_hc",
+    "test_v41_mega_mhc_compact",
 ]
 
 _TESTS = [
@@ -65,24 +80,17 @@ _TESTS = [
 
     "test_native_prefill_inputs",
     "test_mxfp8_dense",
-    "test_deep_gemm_scratch",
-    "test_cache_specs",
-    "test_cache_tags",
     "test_ced",
     "test_dsv41_kernel_jit_warmup",
-    "test_engram",
     "test_engram_cuda",
-    "test_flash_mla_heads",
     "test_v41_cross_layer_mhc",
     "test_v41_aux_capture_mhc",
     "test_v41_decode_rope_metadata",
-    "test_v41_delayed_hc",
     "test_v41_delayed_hc_cuda_graph",
     "test_v41_fused_inv_rope_fp8_quant",
     "test_v41_fused_qkv",
     "test_v41_hc_jit_warmup",
     "test_v41_mega_mhc",
-    "test_v41_mega_mhc_compact",
     "test_v41_mhc_prenorm",
     "test_v41_query_quant",
 ]
@@ -109,6 +117,30 @@ _TESTS = [
         legacy_create_init = 0,
     )
     for name in _TESTS if name not in ["test_prefill_workspace", "test_strategy_select", "test_gate_routing_metadata", "test_v41_aux_capture_mhc", "test_v41_cross_layer_mhc", "test_v41_mega_mhc", "test_mhc_moe_inputs", "test_v41_query_quant", "test_dsv41_kernel_jit_warmup"] + _ENGRAM_SM100_TESTS
+]
+
+[
+    py_test(
+        name = name,
+        srcs = glob(["*.py"]) + ["//rtp_llm/test/pytest:pytest_main.py"],
+        main = "//rtp_llm/test/pytest:pytest_main.py",
+        args = ["$(location :" + name + ".py)"],
+        deps = [
+            "//rtp_llm:testlib",
+            "//rtp_llm/models_py:modules",
+            "//rtp_llm/models_py:tile_kernels_mhc",
+            "//rtp_llm:jit_cache_env",
+            test_requirement("pytest"),
+        ],
+        env = {"GPU_COUNT": "0"},
+        tags = ["dsv41_cuda13", "SM100_ARM_CU13"],
+        target_compatible_with = select({
+            "@//:using_cuda13_arm": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        legacy_create_init = 0,
+    )
+    for name in _CPU_ONLY_TESTS
 ]
 
 py_test(
