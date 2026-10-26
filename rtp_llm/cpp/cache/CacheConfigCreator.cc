@@ -5,10 +5,11 @@
 #include <map>
 #include <numeric>
 #include <set>
+#include <stdexcept>
 #include <utility>
 
 #include "rtp_llm/cpp/cache/KVCacheSpec.h"
-#include "rtp_llm/cpp/cache/KVCacheSpecDesc.h"
+#include "rtp_llm/cpp/cache/CacheSpecLayoutResolver.h"
 #include "rtp_llm/cpp/cache/MemoryEvaluationHelper.h"
 #include "rtp_llm/cpp/utils/AssertUtils.h"
 #include "rtp_llm/cpp/utils/Logger.h"
@@ -214,37 +215,31 @@ void validateDescs(const ModelConfig& model_config, uint32_t kernel_tokens_per_b
     }
 }
 
-void populateGroups(CacheConfig&                 config,
-                    const LayerKVCacheSpecDescs& descs_by_layer,
-                    const LayerKVCacheSpecs&     specs_by_layer,
-                    const ModelConfig&           model_config) {
+void buildGroupsFromDescs(CacheConfig& config, const ModelConfig& model_config, const SpecBuildContext& ctx) {
     struct BuildState {
-        KVCacheSpecPtr   spec;
-        std::string      fingerprint;
-        CacheGroupPolicy policy;
+        KVCacheSpecPtr                    spec;
+        std::string                       fingerprint;
+        CacheGroupPolicy                  policy;
+        std::optional<SpecPhysicalLayout> first_projection;
     };
     std::map<std::string, BuildState> groups_by_tag;
     std::vector<std::string>          ordered_tags;
     std::vector<LayerBase>            layers(static_cast<size_t>(config.layer_num));
     for (uint32_t layer_id = 0; layer_id < config.layer_num; ++layer_id) {
-        layers[layer_id].layer_id = static_cast<int>(layer_id);
-        const auto& descs         = descs_by_layer[layer_id];
-        const auto& specs         = specs_by_layer[layer_id];
-        RTP_LLM_CHECK_WITH_INFO(descs.size() == specs.size(),
-                                "cache layer %u desc count %zu != spec count %zu",
-                                layer_id,
-                                descs.size(),
-                                specs.size());
+        layers[layer_id].layer_id   = static_cast<int>(layer_id);
+        const auto&           descs = model_config.kv_cache_spec_descs[layer_id];
         std::set<std::string> layer_tags;
-        for (size_t i = 0; i < descs.size(); ++i) {
-            const auto& desc = descs[i];
-            const auto& spec = specs[i];
+        for (const auto& desc : descs) {
+            const auto input = resolveCacheSpecInput(desc, ctx);
+            const auto spec  = SpecBuilder::build(desc, ctx, input.physical_layout);
             RTP_LLM_CHECK_WITH_INFO(spec != nullptr, "cache layer %u has null spec", layer_id);
             RTP_LLM_CHECK_WITH_INFO(layer_tags.emplace(spec->tag).second,
                                     "cache layer %u has duplicate tag=%s",
                                     layer_id,
                                     spec->tag.c_str());
-            auto policy = SpecBuilder::groupPolicy(desc);
+            auto policy       = SpecBuilder::groupPolicy(desc);
+            policy.cp_mapping = input.mapping;
+            policy.cp_slice   = input.slice;
             checkGroupResidencyBudget(policy, spec->tag);
             if (policy.group_type == CacheGroupType::SWA) {
                 RTP_LLM_CHECK_WITH_INFO(model_config.attn_config.sliding_window >= 0,
@@ -254,6 +249,30 @@ void populateGroups(CacheConfig&                 config,
                 policy.sliding_window_size = model_config.attn_config.sliding_window;
             }
             auto [it, inserted] = groups_by_tag.emplace(spec->tag, BuildState{});
+            if (!std::holds_alternative<NoSpecProjection>(input.physical_layout)) {
+                auto& projection = it->second.first_projection;
+                if (!projection) {
+                    projection = input.physical_layout;
+                } else {
+                    RTP_LLM_CHECK_WITH_INFO(projection->index() == input.physical_layout.index(),
+                                            "cache tag=%s has incompatible physical projection families",
+                                            desc.tag.c_str());
+                    if (!sameSpecPhysicalLayout(*projection, input.physical_layout)) {
+                        if (std::holds_alternative<ResolvedStateEntryLayout>(input.physical_layout)) {
+                            throw std::invalid_argument("STATE tag has inconsistent entry projection across layers");
+                        }
+                        if (std::holds_alternative<ResolvedSwaByteLayout>(input.physical_layout)) {
+                            throw std::invalid_argument(
+                                "SWA tag has inconsistent packed-byte projection across layers");
+                        }
+                        throw std::invalid_argument("compressed tag has inconsistent CP shape across layers");
+                    }
+                }
+            }
+            if (std::holds_alternative<ResolvedStateEntryLayout>(input.physical_layout)
+                && policy.cp_slice == CpBlockSliceMode::PAYLOAD_BYTES) {
+                config.state_entry_tags.insert(desc.tag);
+            }
             if (inserted) {
                 it->second.spec        = spec;
                 it->second.fingerprint = spec->fingerprint();
@@ -293,8 +312,6 @@ CacheConfig createConfigFromDescs(const ModelConfig&       model_config,
     validateAttentionMetadata(model_config);
     const auto ctx =
         makeSpecBuildContext(model_config, parallelism_config, seq_size, kernel_seq_size, gen_num_per_cycle);
-    const auto specs =
-        CacheConfigCreator::buildLayerSpecsFromDescs(model_config.kv_cache_spec_descs, ctx, model_config.num_layers);
 
     CacheConfig config;
     config.dtype                   = ctx.dtype;
@@ -305,7 +322,7 @@ CacheConfig createConfigFromDescs(const ModelConfig&       model_config,
     config.seq_size_per_block = seq_size;
     config.use_mla            = model_config.attn_config.use_mla;
     config.is_sparse          = model_config.attn_config.is_sparse;
-    populateGroups(config, model_config.kv_cache_spec_descs, specs, model_config);
+    buildGroupsFromDescs(config, model_config, ctx);
     for (const auto& group : config.topology().groups()) {
         const bool opaque =
             group.spec->type == KVCacheSpecType::OpaqueKV || group.spec->type == KVCacheSpecType::OpaqueState;
@@ -318,6 +335,16 @@ CacheConfig createConfigFromDescs(const ModelConfig&       model_config,
 }
 
 }  // namespace
+
+uint32_t CacheConfigCreator::resolvedBaseBlockTokens(const ModelConfig&   model_config,
+                                                     const KVCacheConfig& kv_cache_config) {
+    return resolveSeqSizes(model_config, kv_cache_config).first;
+}
+
+uint32_t CacheConfigCreator::resolvedKernelBlockTokens(const ModelConfig&   model_config,
+                                                       const KVCacheConfig& kv_cache_config) {
+    return resolveSeqSizes(model_config, kv_cache_config).second;
+}
 
 uint32_t maxKVCacheBlockNumForBudget(size_t total_budget_bytes, const KVCacheBlockBudget& budget, int linear_step) {
     RTP_LLM_CHECK_WITH_INFO(budget.paged_block_bytes > 0 || budget.swa_block_bytes > 0,
@@ -334,26 +361,6 @@ uint32_t maxKVCacheBlockNumForBudget(size_t total_budget_bytes, const KVCacheBlo
         }
     }
     return low;
-}
-
-LayerKVCacheSpecs CacheConfigCreator::buildLayerSpecsFromDescs(const LayerKVCacheSpecDescs& layer_descs,
-                                                               const SpecBuildContext&      ctx,
-                                                               int64_t                      expected_layer_num) {
-    RTP_LLM_CHECK_WITH_INFO(layer_descs.size() == static_cast<size_t>(expected_layer_num),
-                            "kv_cache_spec_descs size %zu != num_layers %ld",
-                            layer_descs.size(),
-                            expected_layer_num);
-    LayerKVCacheSpecs layer_specs(layer_descs.size());
-    for (size_t layer_id = 0; layer_id < layer_descs.size(); ++layer_id) {
-        const auto& descs = layer_descs[layer_id];
-        RTP_LLM_CHECK_WITH_INFO(!descs.empty(), "kv_cache_spec_descs layer %zu has no descs", layer_id);
-        auto& specs = layer_specs[layer_id];
-        specs.reserve(descs.size());
-        for (const auto& desc : descs) {
-            specs.push_back(SpecBuilder::build(desc, ctx));
-        }
-    }
-    return layer_specs;
 }
 
 CacheConfig CacheConfigCreator::createBasicConfig(const ModelConfig&       model_config,
@@ -379,6 +386,7 @@ CacheConfig CacheConfigCreator::createWarmupConfig(const ModelConfig&       mode
                                                    const KVCacheConfig&     kv_cache_config,
                                                    int                      gen_num_per_cycle) {
     auto config = createBasicConfig(model_config, parallelism_config, kv_cache_config, gen_num_per_cycle);
+    config.finalizeStorageLayout(parallelism_config, /*warmup=*/true);
     // Upstream warmup pools reserve the sentinel block plus one allocatable
     // block per group, and never inherit linear_step: the SWA
     // ceil(baseline/step) shrink would collapse those groups to sentinel-only.
@@ -402,9 +410,11 @@ CacheConfig CacheConfigCreator::createConfig(const ModelConfig&                 
         "draft proposal token count must fit a non-negative int");
     const int gen_num_per_cycle = draft_model_config != nullptr ? sp_config->gen_num_per_cycle : 0;
     auto      config = createBasicConfig(model_config, parallelism_config, kv_cache_config, gen_num_per_cycle);
+    config.finalizeStorageLayout(parallelism_config);
     if (draft_model_config != nullptr) {
         auto draft = createBasicConfig(*draft_model_config, parallelism_config, kv_cache_config, gen_num_per_cycle);
-        int  num_mtp_modules = is_mtp && !is_eagle && sp_config->type != SP_TYPE_DSPARK ? gen_num_per_cycle : 1;
+        draft.finalizeStorageLayout(parallelism_config);
+        int num_mtp_modules = is_mtp && !is_eagle && sp_config->type != SP_TYPE_DSPARK ? gen_num_per_cycle : 1;
         RTP_LLM_CHECK_WITH_INFO(num_mtp_modules > 0, "draft cache configuration requires at least one module");
         config.mtp_sub_configs.reserve(static_cast<size_t>(num_mtp_modules));
         for (int module = 0; module < num_mtp_modules; ++module) {

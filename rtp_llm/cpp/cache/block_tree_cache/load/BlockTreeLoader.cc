@@ -553,7 +553,7 @@ bool BlockTreeLoader::settleLoadLocked(LoadTaskRunner::Task&                    
         if (resource.transfer_detached) {
             evictor_.discardDetachedTransfer({desc});
             detached_nodes.insert(desc.node);
-            state_settled     = true;
+            state_settled = true;
             continue;
         }
         if (settlement_success) {

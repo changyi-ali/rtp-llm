@@ -84,7 +84,7 @@ TEST(BlockTreeLoaderTest, CrcDeviceReuseDoesNotPromoteUnprotectedBackendFailure)
         }
     }
     ASSERT_TRUE(backend->init(
-        environment->topology, pools, [](int, const std::string&, int) { return std::vector<BlockInfo>{}; }));
+        environment->topology, pools, [](int, const std::string&, int) { return std::vector<BlockInfo>{}; }, 1));
     environment->cache->loader_.storage_backend_ = backend;
     CacheKeysType keys                           = environment->keys;
     keys.push_back(keys.back() + 1);

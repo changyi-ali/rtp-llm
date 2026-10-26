@@ -1,3 +1,4 @@
+#include "rtp_llm/cpp/cache/CacheSpecLayoutResolver.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -130,7 +131,7 @@ void initializeTestGroupSet(const GroupSetPtr&                     group_set,
     size_t         seq_size_per_block = 1;
     if (const auto* swa = dynamic_cast<SWAGroupSet*>(group_set.get()); swa != nullptr) {
         type               = CacheGroupType::SWA;
-        seq_size_per_block = swa->seqSizePerBlock();
+        seq_size_per_block = swa->canonicalSizePerBlock();
     } else if (dynamic_cast<LinearGroupSet*>(group_set.get()) != nullptr) {
         type = CacheGroupType::LINEAR;
     }
@@ -168,7 +169,7 @@ void initializeSingleMemberGroupSets(const std::vector<GroupSetPtr>&        grou
         size_t         seq_size_per_block = 1;
         if (const auto* swa = dynamic_cast<SWAGroupSet*>(group_set.get()); swa != nullptr) {
             type               = CacheGroupType::SWA;
-            seq_size_per_block = swa->seqSizePerBlock();
+            seq_size_per_block = swa->canonicalSizePerBlock();
         } else if (dynamic_cast<LinearGroupSet*>(group_set.get()) != nullptr) {
             type = CacheGroupType::LINEAR;
         }
@@ -180,7 +181,7 @@ void initializeSingleMemberGroupSets(const std::vector<GroupSetPtr>&        grou
         groups.push_back(block_transfer_engine_test::makeTestGroupBase(
             policy, {static_cast<int>(group_set_id)}, logical_layer_bytes, 0, 128, seq_size_per_block));
     }
-    auto topology = block_transfer_engine_test::makeTestTopology(std::move(groups));
+    auto   topology     = block_transfer_engine_test::makeTestTopology(std::move(groups));
     size_t group_set_id = 0;
     for (const auto& tag : topology->groupTags()) {
         group_sets[group_set_id]->initialize(group_set_id, topology, {tag});

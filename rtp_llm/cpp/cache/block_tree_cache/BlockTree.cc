@@ -194,7 +194,7 @@ BlockTreeInsertResult BlockTree::insertNodeImpl(const CacheKeysType&            
         if (pending_node_pool_.count(key)) {
             break;
         }
-        auto         it  = current->children.find(key);
+        auto it = current->children.find(key);
         if (it != current->children.end()) {
             TreeNode* child = it->second;
             if (is_resident
