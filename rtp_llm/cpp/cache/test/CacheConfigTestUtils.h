@@ -376,9 +376,12 @@ inline KVCacheSpecDesc makeDsv4Desc(const std::string& tag,
         desc.capacity->explicit_block_num     = 256;
         desc.capacity->charge_to_paged_budget = true;
         desc.reuse->enable_prefix_reuse       = false;
-        desc.tail                             = CacheTailPolicyDesc{};
-        desc.tail->active_tail_blocks         = 1;
-        desc.tail->validate_tail_blocks       = false;
+        // Keep the local-only HCA-state topology policy-driven: the factory keys
+        // off reuse.local_only_state instead of the tag string.
+        desc.reuse->local_only_state    = true;
+        desc.tail                       = CacheTailPolicyDesc{};
+        desc.tail->active_tail_blocks   = 1;
+        desc.tail->validate_tail_blocks = false;
     } else if (desc.tag == "swa_kv") {
         desc.compression_ratio        = DSV4_SWA_WINDOW_ENTRIES;
         desc.cp->align_payload        = true;
