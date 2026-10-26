@@ -41,27 +41,33 @@ This project includes Maven Wrapper, so you don't need to install Maven separate
 #### Using Maven Wrapper (Recommended)
 
 **Unix/Linux/macOS:**
+
 ```bash
 ./mvnw clean package -DskipTests
 ```
 
 **Windows:**
+
 ```bash
 mvnw.cmd clean package -DskipTests
 ```
 
 #### Using System Maven
+
 ```bash
 mvn clean package -DskipTests
 ```
 
 #### Maven Wrapper Benefits
+
 - **Environment Consistency**: Ensures all developers use the same Maven version
 - **Simplified CI/CD**: No need to pre-install Maven in build environments
 - **Version Lock**: Project specifies the exact Maven version, avoiding compatibility issues
 
 #### Maven Wrapper Files
+
 The following Maven Wrapper files are included in the project (do not delete):
+
 ```
 ├── mvnw              # Unix/Linux/macOS script
 ├── mvnw.cmd          # Windows script
@@ -69,6 +75,43 @@ The following Maven Wrapper files are included in the project (do not delete):
     └── wrapper/
         ├── maven-wrapper.jar        # Core Maven Wrapper JAR
         └── maven-wrapper.properties # Configuration file
+```
+
+### Code Formatting
+
+FlexLB uses the repository-root [pre-commit](https://pre-commit.com/) configuration.
+Java is formatted with Spotless and google-java-format 1.28.0 (AOSP four-space style,
+preserving Javadoc layout); Python uses the repository's Black and isort versions.
+C/C++/CUDA files use the existing clang-format configuration; Protocol Buffers use
+clang-format's Google style. Shell scripts use shfmt. JavaScript, HTML, JSON, YAML,
+XML and Markdown use Prettier (with its official XML plugin).
+
+Enable the repository's Git hooks once per checkout (run from the repository root):
+
+```bash
+uv tool install pre-commit  # alternatively: pip install pre-commit
+git config --local core.hooksPath .githooks
+```
+
+Each `git commit` runs the formatters when matching files are staged. Java changes
+run `spotless:apply` across the FlexLB reactor; Spotless caches files that are already
+clean. The other formatters process staged files. If a formatter changes a file,
+review and stage the result, then commit again. Unstaged changes are preserved by pre-commit.
+Java formatting requires JDK 21; Maven is supplied by `mvnw`. The first run downloads
+the formatter dependencies. Compilation and tests remain separate build commands.
+
+To format all FlexLB code, run from the repository root:
+
+```bash
+git ls-files -z rtp_llm/flexlb | xargs -0 pre-commit run --files
+```
+
+To apply or check Java formatting across all Maven modules:
+
+```bash
+cd rtp_llm/flexlb
+./mvnw spotless:apply -Pspotless-check
+./mvnw spotless:check -Pspotless-check
 ```
 
 ### Configuration
@@ -131,14 +174,14 @@ Omit `router.roles.decode.costEstimator` to balance by KV usage ratio. Set its
 ```json
 {
   "schemaVersion": 3,
-  "requestLifecycle": {"request": {"timeoutMs": 60000}},
+  "requestLifecycle": { "request": { "timeoutMs": 60000 } },
   "router": {
     "roles": {
       "decode": {
         "costEstimator": {
           "expression": "0.3 * running_size / max_running_size + 0.7 * kvcache_used_ratio"
         },
-        "availability": {"maxEngineRequests": 128}
+        "availability": { "maxEngineRequests": 128 }
       }
     }
   }
@@ -346,13 +389,13 @@ are destroyed. Normal idle serving does not start an exit timer.
 Under `QUEUE`, ordering, decision formation, and delivery are three independent
 axes:
 
-| Scheduler | Queue ordering | Decision | Dispatcher | Behavior |
-| --- | --- | --- | --- | --- |
-| `DIRECT` | not applicable | not applicable | `NON_BATCH` | Route immediately; the frontend sends the request |
-| `QUEUE` | `FIFO` | `SINGLE` | `NON_BATCH` | Form singleton decisions; frontend sends |
-| `QUEUE` | `FIFO` | `SINGLE` | `BATCH` | Master sends singleton `EnqueueBatch` calls |
-| `QUEUE` | `FIFO` | `FIXED_WINDOW` | `NON_BATCH` | Form bounded groups; frontend sends each routed request |
-| `QUEUE` | `FIFO` | `FIXED_WINDOW` | `BATCH` | Form bounded groups; Master sends `EnqueueBatch` |
+| Scheduler | Queue ordering | Decision       | Dispatcher  | Behavior                                                |
+| --------- | -------------- | -------------- | ----------- | ------------------------------------------------------- |
+| `DIRECT`  | not applicable | not applicable | `NON_BATCH` | Route immediately; the frontend sends the request       |
+| `QUEUE`   | `FIFO`         | `SINGLE`       | `NON_BATCH` | Form singleton decisions; frontend sends                |
+| `QUEUE`   | `FIFO`         | `SINGLE`       | `BATCH`     | Master sends singleton `EnqueueBatch` calls             |
+| `QUEUE`   | `FIFO`         | `FIXED_WINDOW` | `NON_BATCH` | Form bounded groups; frontend sends each routed request |
+| `QUEUE`   | `FIFO`         | `FIXED_WINDOW` | `BATCH`     | Form bounded groups; Master sends `EnqueueBatch`        |
 
 `PRIORITY` can replace `FIFO` in all four QUEUE combinations. `DIRECT + BATCH`
 is invalid and DIRECT cannot configure `decision`. `FIFO`/`PRIORITY` choose which
@@ -405,13 +448,13 @@ which defaults to `kvcache_used_ratio`. Formulas support `+`, `-`, `*`, `/`, `^`
 parentheses and `sqrt`, `log`, `exp`, `abs`, `max`, `min`, `pow`, and `param(name, initialValue)` functions.
 Decode formulas do not use `sum`. Available variables are:
 
-| Variable | Meaning |
-| --- | --- |
-| `running_size` | Engine-owned requests, including accepted and running requests, plus local request reservations |
-| `max_running_size` | Fixed `router.roles.decode.availability.maxEngineRequests`; must be configured as a positive value when the expression uses this variable |
-| `kvcache_used` | Used KV tokens plus local predicted KV reservations |
-| `kvcache_capacity` | Total KV token capacity |
-| `kvcache_used_ratio` | `kvcache_used / kvcache_capacity`; zero for unknown capacity of zero, without capping ratios above one |
+| Variable             | Meaning                                                                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `running_size`       | Engine-owned requests, including accepted and running requests, plus local request reservations                                           |
+| `max_running_size`   | Fixed `router.roles.decode.availability.maxEngineRequests`; must be configured as a positive value when the expression uses this variable |
+| `kvcache_used`       | Used KV tokens plus local predicted KV reservations                                                                                       |
+| `kvcache_capacity`   | Total KV token capacity                                                                                                                   |
+| `kvcache_used_ratio` | `kvcache_used / kvcache_capacity`; zero for unknown capacity of zero, without capping ratios above one                                    |
 
 Request and KV measurements include queued reservations and ownership retained during preemption.
 Equal costs rotate. Workers with a non-finite formula result are excluded from the preferred
@@ -439,11 +482,13 @@ The service will start on port 7002 with management endpoints on port 8804.
 ## API Documentation
 
 ### Health Check
+
 ```
 GET /actuator/health
 ```
 
 ### Load Balance Status Sync
+
 ```
 POST /load-balance/prefill/consistency/syncStatus
 Content-Type: application/json
@@ -455,6 +500,7 @@ Authorization: Bearer <token>
 ```
 
 ### Master Notification
+
 ```
 POST /load-balance/prefill/consistency/notifyMaster
 Content-Type: application/json

@@ -38,8 +38,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class CacheMetricsReporterTest {
 
-    @Mock
-    private FlexMonitor monitor;
+    @Mock private FlexMonitor monitor;
 
     private CacheMetricsReporter reporter;
 
@@ -103,13 +102,13 @@ class CacheMetricsReporterTest {
 
     @Test
     void should_report_cache_affinity_decision() {
-        reporter.reportCacheAffinityDecision(
-                RoleType.PREFILL, "10.0.0.1", "CACHE_LEADER");
+        reporter.reportCacheAffinityDecision(RoleType.PREFILL, "10.0.0.1", "CACHE_LEADER");
 
-        FlexMetricTags tags = FlexMetricTags.of(
-                "role", "PREFILL",
-                "engineIp", "10.0.0.1",
-                "decision", "CACHE_LEADER");
+        FlexMetricTags tags =
+                FlexMetricTags.of(
+                        "role", "PREFILL",
+                        "engineIp", "10.0.0.1",
+                        "decision", "CACHE_LEADER");
         verify(monitor).report(CACHE_AFFINITY_DECISION, tags, 1.0);
     }
 
