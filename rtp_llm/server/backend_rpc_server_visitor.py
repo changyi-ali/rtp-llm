@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import os
 from dataclasses import replace
@@ -970,10 +971,21 @@ class BackendRPCServerVisitor:
                         )
                         await asyncio.sleep(min(0.2, 0.05 * attempt))
                     finally:
-                        # Closing the wrapper must also cancel a suspended model RPC.
-                        close = getattr(stream, "aclose", None)
-                        if close is not None:
-                            await close()
+                        # Each attempt owns its inner stream. Cleanup must not
+                        # replace a business error or turn success into a retry.
+                        # ModelRpcClient owns finished-RPC EOF settlement.
+                        try:
+                            close = getattr(stream, "aclose", None)
+                            if callable(close):
+                                result = close()
+                                if inspect.isawaitable(result):
+                                    await result
+                        except Exception as close_error:
+                            route_logger.warning(
+                                "backend stream close failed, request_id=%s: %s",
+                                attempt_input.request_id,
+                                close_error,
+                            )
             finally:
                 # An exception owns this generator's traceback. Clearing this
                 # reference releases request tensors without waiting for cyclic GC.
