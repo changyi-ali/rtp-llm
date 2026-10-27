@@ -104,13 +104,14 @@ TEST(TransferStageStateTest, HighestPriorityWinsInEitherCompletionOrderAndStillD
         state.addBatch();
         state.finishSubmitting();
         TransferResult crc(ErrorInfo(ErrorCode::EXECUTION_EXCEPTION, "CRC mismatch"), CacheCopyError::CRC_MISMATCH);
-        TransferResult rpc(ErrorInfo(ErrorCode::EXECUTION_EXCEPTION, "RPC failed"), CacheCopyError::RPC_FAILED);
+        TransferResult rpc(ErrorInfo(ErrorCode::TRANSFER_COMPLETION_UNKNOWN, "RPC failed"), CacheCopyError::RPC_FAILED);
         state.completeBatch(crc_first ? crc : rpc);
         state.completeBatch(crc_first ? rpc : crc);
         EXPECT_EQ(calls, 0u);
         state.completeBatch(ErrorInfo::OkStatus());
         EXPECT_EQ(calls, 1u);
         EXPECT_EQ(result.copy_error, CacheCopyError::CRC_MISMATCH);
+        EXPECT_EQ(result.status.code(), ErrorCode::TRANSFER_COMPLETION_UNKNOWN);
         EXPECT_EQ(result.status.ToString(), crc_first ? "CRC mismatch; RPC failed" : "RPC failed; CRC mismatch");
     }
 }

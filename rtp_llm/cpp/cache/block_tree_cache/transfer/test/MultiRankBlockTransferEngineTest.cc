@@ -1516,10 +1516,14 @@ static void protectedBroadcastLosesCompletion() {
     disableCoreDump();
     StaticConfig::user_ft_core_dump_on_exception = false;
     std::fprintf(stderr, "protected broadcast setup complete; losing completion\n");
-    (void)executeAndWait(engine, {TransferDescriptor::hostToDevice(1, 1, {1})}, 5000);
+    auto context =
+        engine.execute(TransferTask({TransferDescriptor::hostToDevice(1, 1, {1})}, std::chrono::milliseconds(5000)));
+    context->waitDone();
+    EXPECT_FALSE(context->success());
+    EXPECT_EQ(context->errorInfo().code(), ErrorCode::TRANSFER_COMPLETION_UNKNOWN);
 }
 
-TEST_F(MultiRankBlockTransferEngineTest, ProtectedTransferUsesLegacyRpcFailurePolicyWithCoreDumpDisabled) {
+TEST_F(MultiRankBlockTransferEngineTest, ProtectedTransferReportsUnknownCompletionWithCoreDumpDisabled) {
     protectedBroadcastLosesCompletion();
 }
 

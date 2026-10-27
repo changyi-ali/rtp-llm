@@ -93,6 +93,39 @@ void logGlobalCacheMetrics(const RtpLLMCacheMetricsCollector& collector) {
                      static_cast<long>(collector.kv_cache_left_seq));
 }
 
+std::string frozenBlockSummary(const std::vector<const IBlockPool*>& pools) {
+    size_t             total = 0;
+    std::ostringstream entries;
+    for (size_t i = 0; i < pools.size(); ++i) {
+        const auto*  pool  = pools[i];
+        const size_t count = pool->referencedBlocksNum(BlockTreeRefType::FROZEN);
+        total += count;
+        entries << (i == 0 ? "" : ",") << pool->poolName() << "_" << i << ":" << count;
+    }
+    return "{total:" + std::to_string(total) + ",pools:{" + entries.str() + "}}";
+}
+
+void logFrozenCacheBlocks(const BlockTreeCache& cache) {
+    std::array<std::vector<const IBlockPool*>, 3> pools;
+    const auto                                    add_pool = [&pools](size_t tier, const IBlockPool* pool) {
+        auto& tier_pools = pools[tier];
+        if (pool && std::find(tier_pools.begin(), tier_pools.end(), pool) == tier_pools.end()) {
+            tier_pools.push_back(pool);
+        }
+    };
+    for (const auto& group_set : cache.groupSets()) {
+        for (const auto& pool : group_set->devicePools()) {
+            add_pool(0, pool.get());
+        }
+        add_pool(1, group_set->hostPool().get());
+        add_pool(2, group_set->diskPool().get());
+    }
+    const auto device = frozenBlockSummary(pools[0]);
+    const auto host   = frozenBlockSummary(pools[1]);
+    const auto disk   = frozenBlockSummary(pools[2]);
+    RTP_LLM_LOG_INFO("btc_leaked_blocks L1=%s L2=%s L3=%s", device.c_str(), host.c_str(), disk.c_str());
+}
+
 void reportPoolCacheMetrics(const kmonitor::MetricsReporterPtr& metrics_reporter,
                             const CachePoolMetricsSnapshot&     pool_snapshot,
                             bool                                should_log,
@@ -985,6 +1018,9 @@ void KVCacheManager::reportMetricsLoop() {
         if (should_log) {
             last_log_time = now;
             logGlobalCacheMetrics(global_metrics);
+            if (isAllocatorOwner()) {
+                logFrozenCacheBlocks(*block_tree_cache_);
+            }
         }
 
         block_tree_cache_->reportMetrics();
