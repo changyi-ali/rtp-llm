@@ -134,6 +134,21 @@ py_test(
 )
 
 py_test(
+    name = "kimi_k3_native_tokenizer_smoke_test",
+    srcs = ["kimi_k3_native_tokenizer_smoke_test.py"],
+    deps = ["//rtp_llm:testlib"],
+    tags = ["manual"],
+)
+
+py_test(
+    name = "kimi_k3_http_checkpoint_smoke_test",
+    srcs = ["kimi_k3_http_checkpoint_smoke_test.py"],
+    data = ["//rtp_llm/cpp/multimodal_processor/test:kimi_k3_feature_expand_check"],
+    deps = ["//rtp_llm:testlib"],
+    tags = ["manual"],
+)
+
+py_test(
     name = "kimi_k3_multimodal_test",
     srcs = ["kimi_k3_multimodal_test.py"],
     data = ["testdata/kimi_k3/preprocessor_config.json"],
@@ -141,6 +156,14 @@ py_test(
     env = {"GPU_COUNT": "1"},
     exec_properties = {"gpu": "L20_CU13", "gpu_count": "1"},
     tags = ["L20_CU13"],
+)
+
+py_test(
+    name = "kimi_k3_multimodal_checkpoint_smoke_test",
+    srcs = ["kimi_k3_multimodal_checkpoint_smoke_test.py"],
+    data = ["//rtp_llm/cpp/multimodal_processor/test:kimi_k3_feature_expand_check"],
+    deps = ["//rtp_llm:testlib"],
+    tags = ["manual"],
 )
 
 py_test(
