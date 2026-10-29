@@ -1,5 +1,7 @@
 #pragma once
 
+#include "rtp_llm/cpp/cache/CacheSpecLayoutResolver.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +12,7 @@
 #include <vector>
 
 #include "rtp_llm/cpp/cache/CacheConfig.h"
+#include "rtp_llm/cpp/cache/Types.h"
 #include "rtp_llm/cpp/cache/LinearKVCacheSpec.h"
 #include "rtp_llm/cpp/cache/KVCacheSpecDesc.h"
 #include "rtp_llm/cpp/cache/MHAKVCacheSpec.h"
@@ -17,9 +20,38 @@
 #include "rtp_llm/cpp/cache/OpaqueKVCacheSpec.h"
 #include "rtp_llm/cpp/cache/test/TestLayoutSpec.h"
 #include "rtp_llm/cpp/config/ModelConfig.h"
+#include "rtp_llm/cpp/engine_base/stream/CompleteTokenIds.h"
 #include "rtp_llm/cpp/utils/AssertUtils.h"
 
 namespace rtp_llm::test {
+
+// Mirror the caller's immutable global request input. Cache derives the
+// group-local coordinates from this snapshot during malloc and async load.
+inline std::shared_ptr<const MallocInfo::RequestLayout> snapshotGlobalCacheRequest(const BatchKVCacheResource& resource,
+                                                                                   const CompleteTokenIds&     tokens,
+                                                                                   int  incr_seq_len_override = -1,
+                                                                                   bool capture_theory_window = false) {
+    auto snapshot                    = std::make_shared<MallocInfo::RequestLayout>();
+    snapshot->match_keys             = resource.cacheKeys();
+    snapshot->request_seq_len        = tokens.seqLength();
+    snapshot->request_incr_seq_len   = incr_seq_len_override >= 0 ? incr_seq_len_override : tokens.seqLength();
+    snapshot->request_common_seq_len = tokens.commonSeqLength();
+    snapshot->request_total_seq_len  = tokens.totalSeqLength();
+    snapshot->request_reserve_step   = tokens.getReserveStep();
+    if (capture_theory_window) {
+        std::vector<CacheKeysType> theory_keys;
+        theory_keys.reserve(resource.batchSize());
+        for (int batch = 0; batch < resource.batchSize(); ++batch) {
+            CacheKeysType keys = resource.cacheKeys(batch);
+            if (!resource.lastBlockAligned() && !keys.empty()) {
+                keys.pop_back();
+            }
+            theory_keys.push_back(std::move(keys));
+        }
+        snapshot->theory_window_keys = std::move(theory_keys);
+    }
+    return snapshot;
+}
 
 // Used only when first-seen or merged publication order is itself the assertion.
 inline std::vector<std::string> publishedGroupTags(const CacheTopology& topology) {
@@ -77,7 +109,8 @@ inline std::shared_ptr<MHAKVCacheSpec> makeResolvedMhaSpec(rtp_llm::DataType  dt
     ctx.attn_config             = &attn;
     ctx.parallelism_config      = &parallelism;
     ctx.kernel_tokens_per_block = seq_size_per_block;
-    return std::dynamic_pointer_cast<MHAKVCacheSpec>(SpecBuilder::build(desc, ctx));
+    return std::dynamic_pointer_cast<MHAKVCacheSpec>(
+        SpecBuilder::build(desc, ctx, resolveCacheSpecInput(desc, ctx).physical_layout));
 }
 
 inline std::shared_ptr<const CacheTopology> makeTestCacheTopology(int                                  group_num,
@@ -223,7 +256,8 @@ inline std::shared_ptr<MLAKVCacheSpec> makeResolvedMlaSpec(rtp_llm::DataType  dt
     ctx.dtype              = dtype;
     ctx.seq_size_per_block = seq_size_per_block;
     ctx.attn_config        = &attn;
-    return std::dynamic_pointer_cast<MLAKVCacheSpec>(SpecBuilder::build(desc, ctx));
+    return std::dynamic_pointer_cast<MLAKVCacheSpec>(
+        SpecBuilder::build(desc, ctx, resolveCacheSpecInput(desc, ctx).physical_layout));
 }
 
 inline std::shared_ptr<LinearKVCacheSpec>
@@ -263,7 +297,8 @@ makeResolvedLinearSpec(rtp_llm::DataType  dtype,
     ctx.linear_attention_config = &linear;
     ctx.parallelism_config      = &parallelism;
     ctx.kernel_tokens_per_block = seq_size_per_block;
-    return std::dynamic_pointer_cast<LinearKVCacheSpec>(SpecBuilder::build(desc, ctx));
+    return std::dynamic_pointer_cast<LinearKVCacheSpec>(
+        SpecBuilder::build(desc, ctx, resolveCacheSpecInput(desc, ctx).physical_layout));
 }
 
 inline KVCacheSpecPtr makeResolvedOpaqueSpec(bool               state_cache,
@@ -292,7 +327,7 @@ inline KVCacheSpecPtr makeResolvedOpaqueSpec(bool               state_cache,
     SpecBuildContext ctx;
     ctx.dtype              = dtype;
     ctx.seq_size_per_block = seq_size_per_block;
-    return SpecBuilder::build(desc, ctx);
+    return SpecBuilder::build(desc, ctx, resolveCacheSpecInput(desc, ctx).physical_layout);
 }
 
 inline std::shared_ptr<FixedStateCacheSpec> makeTestFixedStateSpec(uint32_t seq_size_per_block) {
@@ -496,7 +531,7 @@ inline KVCacheSpecPtr makeMhaSpec(const std::string& tag,
     ctx.seq_size_per_block = static_cast<uint32_t>(tokens_per_block);
     ctx.attn_config        = &attn_config;
     ctx.parallelism_config = &parallelism_config;
-    return SpecBuilder::build(desc, ctx);
+    return SpecBuilder::build(desc, ctx, resolveCacheSpecInput(desc, ctx).physical_layout);
 }
 
 inline KVCacheSpecPtr makeLinearSpec(const std::string& tag,
@@ -524,7 +559,7 @@ inline KVCacheSpecPtr makeLinearSpec(const std::string& tag,
     ctx.seq_size_per_block      = static_cast<uint32_t>(tokens_per_block);
     ctx.linear_attention_config = &linear_config;
     ctx.parallelism_config      = &parallelism_config;
-    return SpecBuilder::build(desc, ctx);
+    return SpecBuilder::build(desc, ctx, resolveCacheSpecInput(desc, ctx).physical_layout);
 }
 
 inline CacheConfig

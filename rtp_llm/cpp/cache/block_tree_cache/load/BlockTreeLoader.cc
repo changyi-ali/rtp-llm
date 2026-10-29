@@ -449,10 +449,10 @@ void BlockTreeLoader::runLoadTask(const LoadTaskRunner::TaskPtr& task) {
             // Ordinary LOAD references still protect both ends until settlement.
             // Preserve those physical slots before publishing the failure.
             for (const TransferDescriptor& desc : task->load_descs) {
-                const GroupSetPtr& group_set = tree_->groupSets()[desc.group_set_id];
-                IBlockPool* source_pool = desc.source_tier == Tier::HOST ?
-                                              static_cast<IBlockPool*>(group_set->hostPool().get()) :
-                                              static_cast<IBlockPool*>(group_set->diskPool().get());
+                const GroupSetPtr& group_set   = tree_->groupSets()[desc.group_set_id];
+                IBlockPool*        source_pool = desc.source_tier == Tier::HOST ?
+                                                     static_cast<IBlockPool*>(group_set->hostPool().get()) :
+                                                     static_cast<IBlockPool*>(group_set->diskPool().get());
                 for (BlockIdxType block : desc.source_blocks) {
                     source_pool->freezeBlock(block, BlockTreeRefType::LOAD);
                 }
@@ -572,7 +572,7 @@ bool BlockTreeLoader::settleLoadLocked(LoadTaskRunner::Task&                    
         if (resource.transfer_detached) {
             evictor_.discardDetachedTransfer({desc});
             detached_nodes.insert(desc.node);
-            state_settled     = true;
+            state_settled = true;
             continue;
         }
         if (settlement_success) {

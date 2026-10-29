@@ -1,6 +1,8 @@
+#include "rtp_llm/cpp/cache/CacheSpecLayoutResolver.h"
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <numeric>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -10,7 +12,7 @@
 
 #include "rtp_llm/cpp/cache/BufferTypes.h"
 #include "rtp_llm/cpp/cache/CacheConfig.h"
-#include "rtp_llm/cpp/cache/CPSlotMapper.h"
+#include "rtp_llm/cpp/cache/CachePhysicalRegion.h"
 #include "rtp_llm/cpp/cache/OpaqueKVCacheSpec.h"
 #include "rtp_llm/models_py/bindings/OpDefs.h"
 
@@ -174,7 +176,7 @@ TEST(KVCacheLayoutViewTest, CompressedSpecPreservesPaddingBetweenKernelPages) {
     ctx.kernel_tokens_per_block = 8;
     GroupBase group;
     group.tag               = desc.tag;
-    group.spec              = CompressedKVCacheSpec::build(desc, ctx);
+    group.spec              = SpecBuilder::build(desc, ctx, resolveCacheSpecInput(desc, ctx).physical_layout);
     group.policy.group_type = CacheGroupType::FULL;
     group.block_num         = 3;
     ASSERT_EQ(group.kvBlockStrideBytes(), 32u);
@@ -187,6 +189,93 @@ TEST(KVCacheLayoutViewTest, CompressedSpecPreservesPaddingBetweenKernelPages) {
     for (int page = 0; page < 12; ++page) {
         EXPECT_EQ(view[page][0].item<int>(), page * 8);
         EXPECT_EQ(view[page][7].item<int>(), page * 8 + 7);
+    }
+}
+
+TEST(KVCacheLayoutViewTest, ProjectedCloneOwnsStateAndByteMetadata) {
+    for (const bool byte_sliced : {false, true}) {
+        SCOPED_TRACE(byte_sliced);
+        KVCacheSpecPtr             clone;
+        std::weak_ptr<KVCacheSpec> original;
+        {
+            KVCacheSpecDesc desc;
+            desc.tag                          = "owned_projection";
+            desc.cache_type                   = KVCacheSpecType::OpaqueState;
+            desc.entry_dtype                  = DataType::TYPE_UINT8;
+            desc.entry_elems                  = byte_sliced ? 528 : 16;
+            desc.explicit_entry_count         = byte_sliced ? 128 : 10;
+            desc.block_stride_bytes_alignment = byte_sliced ? 512 : 64;
+            desc.cp                           = CacheCpPolicyDesc{};
+            desc.cp->scale_seq_size           = true;
+            desc.cp->prefill_slice_layout =
+                byte_sliced ? CpPrefillSliceLayout::BLOCK_STRIDE : CpPrefillSliceLayout::PAYLOAD;
+            ParallelismConfig parallelism;
+            parallelism.role_type                          = RoleType::PREFILL;
+            parallelism.tp_size                            = byte_sliced ? 5 : 4;
+            parallelism.tp_rank                            = 3;
+            parallelism.prefill_cp_config.kv_cache_sharded = true;
+            SpecBuildContext context;
+            context.seq_size_per_block      = 128;
+            context.kernel_tokens_per_block = 128;
+            context.parallelism_config      = &parallelism;
+            auto input                      = resolveCacheSpecInput(desc, context);
+            auto spec                       = SpecBuilder::build(desc, context, input.physical_layout);
+            original                        = spec;
+            clone                           = spec->clone();
+            const auto* source              = dynamic_cast<const FixedStateCacheSpec*>(spec.get());
+            const auto* copied              = dynamic_cast<const FixedStateCacheSpec*>(clone.get());
+            ASSERT_NE(source, nullptr);
+            ASSERT_NE(copied, nullptr);
+            if (byte_sliced) {
+                ASSERT_NE(source->swaByteLayout(), nullptr);
+                ASSERT_NE(copied->swaByteLayout(), nullptr);
+                EXPECT_NE(source->swaByteLayout(), copied->swaByteLayout());
+                input.physical_layout = std::monostate{};
+            } else {
+                ASSERT_NE(source->stateEntryLayout(), nullptr);
+                ASSERT_NE(copied->stateEntryLayout(), nullptr);
+                EXPECT_NE(source->stateEntryLayout(), copied->stateEntryLayout());
+                input.physical_layout = std::monostate{};
+            }
+        }
+        ASSERT_TRUE(original.expired());
+        const auto* state = dynamic_cast<const FixedStateCacheSpec*>(clone.get());
+        ASSERT_NE(state, nullptr);
+        if (byte_sliced) {
+            EXPECT_EQ(state->stateEntryLayout(), nullptr);
+            const auto* layout = state->swaByteLayout();
+            ASSERT_NE(layout, nullptr);
+            EXPECT_EQ(layout->seq_size_per_block, 640u);
+            EXPECT_EQ(layout->full_entries, 128u);
+            EXPECT_EQ(layout->full_payload_bytes, 67584u);
+            EXPECT_EQ(layout->full_stride_bytes, 69120u);
+            EXPECT_EQ(layout->local_byte_begin, 41472u);
+            EXPECT_EQ(layout->local_stride_bytes, 13824u);
+        } else {
+            EXPECT_EQ(state->swaByteLayout(), nullptr);
+            const auto* layout = state->stateEntryLayout();
+            ASSERT_NE(layout, nullptr);
+            EXPECT_EQ(layout->seq_size_per_block, 512u);
+            EXPECT_EQ(layout->full_entries, 12u);
+            EXPECT_EQ(layout->local_entry_begin, 9u);
+            EXPECT_EQ(layout->local_entries, 3u);
+            EXPECT_EQ(layout->entry_bytes, 16u);
+        }
+        const size_t stride = byte_sliced ? 13824 : 64;
+        EXPECT_EQ(clone->block_payload_bytes(), byte_sliced ? 67584u : 48u);
+        EXPECT_EQ(clone->block_size_bytes(), stride);
+        GroupBase group;
+        group.tag               = "owned_projection";
+        group.spec              = clone;
+        group.policy.group_type = CacheGroupType::LINEAR;
+        group.block_num         = 2;
+        auto base = torch::zeros({2, static_cast<int64_t>(stride)}, torch::TensorOptions().dtype(torch::kUInt8));
+        torch_ext::KVCache cache(makeLayout({group}, {group.tag}, {{base, {}}}));
+        const auto         view = cache.getLayerCache(0).kv_cache_base;
+        EXPECT_EQ(view.sizes().vec(), (std::vector<int64_t>{2, static_cast<int64_t>(stride)}));
+        EXPECT_EQ(view.data_ptr(), base.data_ptr());
+        EXPECT_EQ(cache.getEntriesPerBlock(group.tag), byte_sliced ? 128u : 3u);
+        EXPECT_EQ(cache.getSeqSizePerBlock(group.tag), byte_sliced ? 640u : 512u);
     }
 }
 
@@ -210,10 +299,12 @@ TEST(KVCacheLayoutViewTest, Cp5ByteSlicedRingEntryCountExcludesAlignmentPadding)
     ctx.parallelism_config      = &parallelism;
     GroupBase group;
     group.tag               = desc.tag;
-    group.spec              = FixedStateCacheSpec::build(desc, ctx);
+    group.spec              = SpecBuilder::build(desc, ctx, resolveCacheSpecInput(desc, ctx).physical_layout);
     group.policy.group_type = CacheGroupType::LINEAR;
     group.block_num         = 2;
     const auto stride       = group.kvBlockStrideBytes();
+    EXPECT_EQ(stride, 13824u);
+    EXPECT_EQ(stride * 5, 69120u);
     // LCM(512, 5) alignment adds at least one 528-byte entry's worth of padding.
     EXPECT_GT(stride * 5 / desc.entry_elems, desc.explicit_entry_count);
     auto base = torch::zeros({2, static_cast<int64_t>(stride)}, torch::TensorOptions().dtype(torch::kUInt8));
@@ -225,12 +316,15 @@ TEST(KVCacheLayoutViewTest, Cp5ByteSlicedRingEntryCountExcludesAlignmentPadding)
 TEST(KVCacheLayoutViewTest, AlignedSwaRingSharesFullStrideAcrossPrefillAndDecode) {
     for (const uint32_t cp_size : {3u, 5u, 7u}) {
         KVCacheSpecDesc desc;
-        desc.tag                          = "swa_kv";
-        desc.cache_type                   = KVCacheSpecType::OpaqueState;
-        desc.entry_dtype                  = DataType::TYPE_UINT8;
-        desc.entry_elems                  = 528;
-        desc.explicit_entry_count         = 136;
-        desc.block_stride_bytes_alignment = 16896;  // LCM(512, 528)
+        desc.tag                  = "swa_kv";
+        desc.cache_type           = KVCacheSpecType::OpaqueState;
+        desc.entry_dtype          = DataType::TYPE_UINT8;
+        desc.entry_elems          = 528;
+        desc.explicit_entry_count = 136;
+        // Decode owns the complete physical block and applies only this
+        // declared alignment. Include CP in that alignment so the full decode
+        // stride remains tileable by every producer rank.
+        desc.block_stride_bytes_alignment = std::lcm<size_t>(16896u, cp_size);
         desc.cp                           = CacheCpPolicyDesc{};
         desc.cp->align_payload            = true;
         desc.cp->prefill_slice_layout     = CpPrefillSliceLayout::BLOCK_STRIDE;
@@ -247,9 +341,11 @@ TEST(KVCacheLayoutViewTest, AlignedSwaRingSharesFullStrideAcrossPrefillAndDecode
         ctx.seq_size_per_block      = 128 * cp_size;
         ctx.kernel_tokens_per_block = 128;
         ctx.parallelism_config      = &prefill;
-        auto prefill_spec           = FixedStateCacheSpec::build(desc, ctx);
+        const auto prefill_input    = resolveCacheSpecInput(desc, ctx);
+        auto       prefill_spec     = SpecBuilder::build(desc, ctx, prefill_input.physical_layout);
         ctx.parallelism_config      = &decode;
-        auto       decode_spec      = FixedStateCacheSpec::build(desc, ctx);
+        const auto decode_input     = resolveCacheSpecInput(desc, ctx);
+        auto       decode_spec      = SpecBuilder::build(desc, ctx, decode_input.physical_layout);
         const auto full_stride      = decode_spec->block_size_bytes();
         EXPECT_EQ(full_stride % 528, 0u) << cp_size;
         EXPECT_EQ(full_stride % cp_size, 0u) << cp_size;
@@ -276,16 +372,18 @@ TEST(KVCacheLayoutViewTest, AlignedSwaRingSharesFullStrideAcrossPrefillAndDecode
         config.seq_size_per_block = 128;
         config.layer_num          = 1;
         config.setTopology({group}, {{0, {desc.tag}}});
-        CPSlotMapper      mapper(0, cp_size, 128);
         std::vector<char> destination(full_stride);
         BlockInfo         block;
         block.addr       = destination.data();
         block.size_bytes = full_stride;
         for (uint32_t rank = 0; rank < cp_size; ++rank) {
-            const auto slices = mapper.sliceBlockForPeer(config, desc.tag, {block}, rank);
-            ASSERT_EQ(slices.size(), 1u);
-            EXPECT_EQ(slices[0].size_bytes, prefill_spec->block_size_bytes());
-            EXPECT_EQ(slices[0].addr, destination.data() + rank * prefill_spec->block_size_bytes());
+            const auto slice = sliceDecodeCacheBlock(config.group(desc.tag),
+                                                     group.policy.cp_slice,
+                                                     block,
+                                                     static_cast<int>(cp_size),
+                                                     static_cast<int>(rank));
+            EXPECT_EQ(slice.size_bytes, prefill_spec->block_size_bytes());
+            EXPECT_EQ(slice.addr, destination.data() + rank * prefill_spec->block_size_bytes());
         }
     }
 }

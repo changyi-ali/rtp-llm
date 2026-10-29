@@ -1,5 +1,7 @@
 #pragma once
 
+#include "rtp_llm/cpp/cache/CacheSpecLayoutResolver.h"
+
 #include <cstdint>
 #include <numeric>
 #include "rtp_llm/cpp/cache/CacheConfig.h"
@@ -68,7 +70,7 @@ inline KVCacheSpecPtr createTestKvCacheSpec(uint32_t          layer_num,
         attention_config.rope_head_dim    = v_elems / seq_size_per_block;
         attention_config.tokens_per_block = seq_size_per_block;
     }
-    return SpecBuilder::build(desc, context);
+    return SpecBuilder::build(desc, context, resolveCacheSpecInput(desc, context).physical_layout);
 }
 
 inline DeviceBlockPoolConfig createTestConfig(size_t   k_block_stride_bytes = 512,

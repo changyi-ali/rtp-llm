@@ -1,23 +1,27 @@
 #include "rtp_llm/cpp/cache/KVCacheSpecDesc.h"
 
 #include "rtp_llm/cpp/cache/KVCacheSpec.h"
+#include "rtp_llm/cpp/cache/CacheSpecLayoutResolver.h"
 #include "rtp_llm/cpp/utils/AssertUtils.h"
 
 namespace rtp_llm {
 
-KVCacheSpecPtr SpecBuilder::build(const KVCacheSpecDesc& desc, const SpecBuildContext& ctx) {
+KVCacheSpecPtr SpecBuilder::build(const KVCacheSpecDesc&    desc,
+                                  const SpecBuildContext&   ctx,
+                                  const SpecPhysicalLayout& physical_layout) {
     RTP_LLM_CHECK_WITH_INFO(!desc.tag.empty(), "KVCacheSpecDesc tag must not be empty");
+    validateSpecPhysicalLayout(desc, physical_layout);
     switch (desc.cache_type) {
         case KVCacheSpecType::MultiHeadAttention:
-            return MHAKVCacheSpec::build(desc, ctx);
+            return MHAKVCacheSpec::build(desc, ctx, physical_layout);
         case KVCacheSpecType::MultiHeadLatentAttention:
-            return MLAKVCacheSpec::build(desc, ctx);
+            return MLAKVCacheSpec::build(desc, ctx, physical_layout);
         case KVCacheSpecType::LinearAttention:
-            return LinearKVCacheSpec::build(desc, ctx);
+            return LinearKVCacheSpec::build(desc, ctx, physical_layout);
         case KVCacheSpecType::OpaqueKV:
-            return CompressedKVCacheSpec::build(desc, ctx);
+            return CompressedKVCacheSpec::build(desc, ctx, physical_layout);
         case KVCacheSpecType::OpaqueState:
-            return FixedStateCacheSpec::build(desc, ctx);
+            return FixedStateCacheSpec::build(desc, ctx, physical_layout);
     }
     RTP_LLM_CHECK_WITH_INFO(false, "unknown KVCacheSpecType=%d", static_cast<int>(desc.cache_type));
     return nullptr;
@@ -80,14 +84,6 @@ CacheGroupPolicy SpecBuilder::groupPolicy(const KVCacheSpecDesc& desc) {
         }
         if (desc.tail->validate_tail_blocks.has_value()) {
             policy.validate_tail_blocks = *desc.tail->validate_tail_blocks;
-        }
-    }
-    if (desc.cp.has_value()) {
-        if (desc.cp->mapping.has_value()) {
-            policy.cp_mapping = *desc.cp->mapping;
-        }
-        if (desc.cp->slice.has_value()) {
-            policy.cp_slice = *desc.cp->slice;
         }
     }
     policy.shared_chunk_state =

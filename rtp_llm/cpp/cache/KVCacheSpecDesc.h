@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "rtp_llm/cpp/cache/CacheGroupType.h"
+#include "rtp_llm/cpp/cache/CacheSpecLayout.h"
 #include "rtp_llm/cpp/cache/KVCacheSpecBase.h"
 #include "rtp_llm/cpp/config/ConfigModules.h"
 #include "rtp_llm/cpp/model_utils/AttentionConfig.h"
@@ -92,7 +94,8 @@ struct SpecBuildContext {
 
 class SpecBuilder {
 public:
-    static KVCacheSpecPtr   build(const KVCacheSpecDesc& desc, const SpecBuildContext& ctx);
+    static KVCacheSpecPtr
+    build(const KVCacheSpecDesc& desc, const SpecBuildContext& ctx, const SpecPhysicalLayout& physical_layout);
     static CacheGroupType   groupType(const KVCacheSpecDesc& desc);
     static CacheGroupPolicy groupPolicy(const KVCacheSpecDesc& desc);
     static uint32_t         kernelSeqSizePerBlock(const KVCacheSpecDesc&  desc,
