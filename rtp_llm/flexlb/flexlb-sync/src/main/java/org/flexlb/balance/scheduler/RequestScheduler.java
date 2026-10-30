@@ -50,8 +50,7 @@ public final class RequestScheduler {
             PlacementAvailability placementAvailability) {
         Objects.requireNonNull(configService, "configService");
         this.router = Objects.requireNonNull(router, "router");
-        this.endpointRegistry = Objects.requireNonNull(
-                endpointRegistry, "endpointRegistry");
+        this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.requestRegistry = Objects.requireNonNull(requestRegistry, "lifecycle");
         FlexlbConfig startupConfig = configService.loadBalanceConfig();
         this.globalQueue =
@@ -75,8 +74,8 @@ public final class RequestScheduler {
     /** Register once, then enter direct admission or the ordered global queue. */
     public CompletableFuture<Response> submit(BalanceContext context) {
         if (context == null || context.getRequest() == null) {
-            return CompletableFuture.completedFuture(error(
-                    StrategyErrorType.INVALID_REQUEST, null));
+            return CompletableFuture.completedFuture(
+                    error(StrategyErrorType.INVALID_REQUEST, null));
         }
         // Vision lookup owns no request generation, admission, queue or KV reservation.
         if (context.getRequest().isVitRouteOnly()) {
@@ -151,12 +150,16 @@ public final class RequestScheduler {
             BalanceContext context, CompletableFuture<Response> future) {
         try {
             if (!globalQueue.offer(context, future, context.getPriority())) {
-                future.complete(error(StrategyErrorType.DISPATCH_FAILED,
-                        "request scheduler is shutting down"));
+                future.complete(
+                        error(
+                                StrategyErrorType.DISPATCH_FAILED,
+                                "request scheduler is shutting down"));
             }
         } catch (Throwable failure) {
-            future.complete(error(StrategyErrorType.DISPATCH_FAILED,
-                    "Queue submission failed: " + failure.getMessage()));
+            future.complete(
+                    error(
+                            StrategyErrorType.DISPATCH_FAILED,
+                            "Queue submission failed: " + failure.getMessage()));
         }
     }
 
@@ -211,37 +214,58 @@ public final class RequestScheduler {
         long decisionStartedNanos = System.nanoTime();
         try {
             PlacementResult<RouteAdmission, PlacementKey> selection = router.select(context);
-            FlexlbTrace.recordPlacement(context.getTraceContext(), decisionStartedNanos,
-                    selection.status().name(), selection.diagnostics(), null);
+            FlexlbTrace.recordPlacement(
+                    context.getTraceContext(),
+                    decisionStartedNanos,
+                    selection.status().name(),
+                    selection.diagnostics(),
+                    null);
             context.setSchedulingDiagnostics(selection.diagnostics());
             switch (selection.status()) {
                 case SUCCESS -> {
                     try (RouteAdmission admission = selection.value()) {
                         var committed = admission.tryCommitDirectRoute(context, requestRegistry);
-                        failure = switch (committed.status()) {
-                            case SUCCESS -> {
-                                var delivery = committed.value();
-                                requestRegistry.publishRoute(delivery.claim(), delivery.precedingWork(), delivery.unstartedWorkMs());
-                                yield null;
-                            }
-                            case REJECTED -> committed.failure();
-                            case CLOSED -> Response.error(StrategyErrorType.REQUEST_CANCELLED);
-                            case BLOCKED -> Response.error(StrategyErrorType.RESOURCE_EXHAUSTED);
-                        };
+                        failure =
+                                switch (committed.status()) {
+                                    case SUCCESS -> {
+                                        var delivery = committed.value();
+                                        requestRegistry.publishRoute(
+                                                delivery.claim(),
+                                                delivery.precedingWork(),
+                                                delivery.unstartedWorkMs());
+                                        yield null;
+                                    }
+                                    case REJECTED -> committed.failure();
+                                    case CLOSED ->
+                                            Response.error(StrategyErrorType.REQUEST_CANCELLED);
+                                    case BLOCKED ->
+                                            Response.error(StrategyErrorType.RESOURCE_EXHAUSTED);
+                                };
                     }
                 }
-                case BLOCKED -> failure = selection.failure() != null
-                        ? selection.failure() : Response.error(selection.blocker().role().getErrorType());
+                case BLOCKED ->
+                        failure =
+                                selection.failure() != null
+                                        ? selection.failure()
+                                        : Response.error(selection.blocker().role().getErrorType());
                 case REJECTED -> failure = selection.failure();
                 case CLOSED -> failure = Response.error(StrategyErrorType.REQUEST_CANCELLED);
             }
         } catch (RuntimeException selectionFailure) {
-            FlexlbTrace.recordPlacement(context.getTraceContext(), decisionStartedNanos,
-                    "ERROR", null, selectionFailure);
-            Logger.warn("DIRECT admission failed: request_id={}", context.getRequestId(), selectionFailure);
+            FlexlbTrace.recordPlacement(
+                    context.getTraceContext(),
+                    decisionStartedNanos,
+                    "ERROR",
+                    null,
+                    selectionFailure);
+            Logger.warn(
+                    "DIRECT admission failed: request_id={}",
+                    context.getRequestId(),
+                    selectionFailure);
         } finally {
             if (failure != null) {
-                requestRegistry.publishDecisionResponseAsync(context.getRequestId(), context.getFuture(), failure);
+                requestRegistry.publishDecisionResponseAsync(
+                        context.getRequestId(), context.getFuture(), failure);
             }
         }
     }

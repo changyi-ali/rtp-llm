@@ -48,14 +48,17 @@ class ExpirationCleanerTest {
         assertTrue(status.isActiveGeneration());
         for (int failures = 1; failures <= 3; failures++) {
             WorkerStatus.PollLease lease = status.tryBeginStatusPoll(failures);
-            status.recordStatusRpcResult(lease, false, false, new IllegalStateException("RPC failed"));
+            status.recordStatusRpcResult(
+                    lease, false, false, new IllegalStateException("RPC failed"));
             lease.close();
             cleaner.retireUnavailableWorkers();
             assertTrue(status.isActiveGeneration());
             org.junit.jupiter.api.Assertions.assertNull(status.retirementReason());
             org.mockito.Mockito.verifyNoInteractions(cache);
         }
-        assertEquals(0L, status.pollHealth().lastSuccessfulPollUs(),
+        assertEquals(
+                0L,
+                status.pollHealth().lastSuccessfulPollUs(),
                 "a worker that never replied must not report discovery time as a successful RPC");
         for (int count = 1; count <= 3; count++) {
             try (var lease = status.tryBeginStatusPoll(3L + count)) {
@@ -76,15 +79,16 @@ class ExpirationCleanerTest {
         var cleaner = new ExpirationCleaner(mock(CacheAwareService.class), directory);
         var emitted = new CountDownLatch(1);
         var line = new AtomicReference<String>();
-        var appender = new AppenderBase<ILoggingEvent>() {
-            @Override
-            protected void append(ILoggingEvent event) {
-                if (event.getMessage().startsWith("event=worker_counts ")) {
-                    line.set(event.getFormattedMessage());
-                    emitted.countDown();
-                }
-            }
-        };
+        var appender =
+                new AppenderBase<ILoggingEvent>() {
+                    @Override
+                    protected void append(ILoggingEvent event) {
+                        if (event.getMessage().startsWith("event=worker_counts ")) {
+                            line.set(event.getFormattedMessage());
+                            emitted.countDown();
+                        }
+                    }
+                };
         var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("syncLogger");
         Level previousLevel = logger.getLevel();
         logger.setLevel(Level.INFO);
@@ -111,7 +115,9 @@ class ExpirationCleanerTest {
 
     @Test
     void springSchedulesWorkerCleanupAtTheConfiguredInterval() {
-        FlexlbConfig config = ConfigService.parse("""
+        FlexlbConfig config =
+                ConfigService.parse(
+                        """
                 {"requestLifecycle":{"request":{"timeoutMs":60000}},
                  "workerRegistry":{"health":{"cleanupIntervalMs":1250}}}
                 """);
@@ -126,21 +132,22 @@ class ExpirationCleanerTest {
             context.registerBean(ScheduledAnnotationBeanPostProcessor.class);
             context.registerBean(ExpirationCleaner.class);
             context.refresh();
-            var tasks = context.getBean(ScheduledAnnotationBeanPostProcessor.class).getScheduledTasks();
+            var tasks =
+                    context.getBean(ScheduledAnnotationBeanPostProcessor.class).getScheduledTasks();
             assertEquals(1, tasks.size());
-            FixedRateTask task = assertInstanceOf(FixedRateTask.class, tasks.iterator().next().getTask());
+            FixedRateTask task =
+                    assertInstanceOf(FixedRateTask.class, tasks.iterator().next().getTask());
             assertEquals(1250L, task.getInterval());
         }
     }
 
     @Test
-    void detachesEveryUnavailableWorkerBeforeAwaitingAnyRetirement()
-            throws Exception {
+    void detachesEveryUnavailableWorkerBeforeAwaitingAnyRetirement() throws Exception {
         EndpointRegistry registry = mock(EndpointRegistry.class);
         CacheAwareService cache = mock(CacheAwareService.class);
         WorkerStatus first = status("127.0.0.1", 8080);
         WorkerStatus second = status("127.0.0.2", 8080);
-        for (WorkerStatus status : new WorkerStatus[]{first, second}) {
+        for (WorkerStatus status : new WorkerStatus[] {first, second}) {
             for (int count = 1; count <= 3; count++) {
                 try (var lease = status.tryBeginStatusPoll(count)) {
                     status.recordStatusRpcResult(lease, true, false, null);
@@ -157,40 +164,40 @@ class ExpirationCleanerTest {
                 mock(EndpointRegistry.DetachedGeneration.class);
         WorkerEndpoint firstEndpoint = mock(WorkerEndpoint.class);
         WorkerEndpoint secondEndpoint = mock(WorkerEndpoint.class);
-        configureDetach(
-                registry, first, firstEndpoint, firstDetached);
-        configureDetach(
-                registry, second, secondEndpoint, secondDetached);
+        configureDetach(registry, first, firstEndpoint, firstDetached);
+        configureDetach(registry, second, secondEndpoint, secondDetached);
 
         CountDownLatch firstAwaitEntered = new CountDownLatch(1);
         CountDownLatch releaseFirstAwait = new CountDownLatch(1);
-        org.mockito.Mockito.doAnswer(invocation -> {
-            firstAwaitEntered.countDown();
-            assertTrue(releaseFirstAwait.await(5, TimeUnit.SECONDS));
-            return null;
-        }).when(firstDetached).retireAndAwait();
+        org.mockito.Mockito.doAnswer(
+                        invocation -> {
+                            firstAwaitEntered.countDown();
+                            assertTrue(releaseFirstAwait.await(5, TimeUnit.SECONDS));
+                            return null;
+                        })
+                .when(firstDetached)
+                .retireAndAwait();
 
         ExpirationCleaner cleaner = new ExpirationCleaner(cache, directory);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Future<?> cleaning = executor.submit(
-                    cleaner::retireUnavailableWorkers);
+            Future<?> cleaning = executor.submit(cleaner::retireUnavailableWorkers);
 
             assertTrue(firstAwaitEntered.await(2, TimeUnit.SECONDS));
             assertFalse(first.isActiveGeneration());
-            assertFalse(second.isActiveGeneration(),
+            assertFalse(
+                    second.isActiveGeneration(),
                     "the second routing gate must close before the first drain waits");
             releaseFirstAwait.countDown();
             cleaning.get(5, TimeUnit.SECONDS);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-            while (!directory.statusSnapshot(RoleType.PREFILL).isEmpty() && System.nanoTime() < deadline) {
+            while (!directory.statusSnapshot(RoleType.PREFILL).isEmpty()
+                    && System.nanoTime() < deadline) {
                 java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
             }
             assertTrue(directory.statusSnapshot(RoleType.PREFILL).isEmpty());
-            verify(cache).removeEngineBlockCache(
-                    first, first.trace());
-            verify(cache).removeEngineBlockCache(
-                    second, second.trace());
+            verify(cache).removeEngineBlockCache(first, first.trace());
+            verify(cache).removeEngineBlockCache(second, second.trace());
         } finally {
             releaseFirstAwait.countDown();
             executor.shutdownNow();

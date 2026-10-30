@@ -50,7 +50,8 @@ class AbstractGrpcClientTest {
 
         assertEquals(0, client.channelCount());
         for (var invoker : removed) {
-            assertEquals(AbstractGrpcClient.CloseReason.DISCOVERY_REMOVED,
+            assertEquals(
+                    AbstractGrpcClient.CloseReason.DISCOVERY_REMOVED,
                     invoker.getCloseObservation().reason());
             verify(invoker.getChannel()).shutdown();
         }
@@ -61,7 +62,8 @@ class AbstractGrpcClientTest {
 
         assertEquals(0, client.channelCount());
         for (var invoker : stopped) {
-            assertEquals(AbstractGrpcClient.CloseReason.CLIENT_SHUTDOWN,
+            assertEquals(
+                    AbstractGrpcClient.CloseReason.CLIENT_SHUTDOWN,
                     invoker.getCloseObservation().reason());
             verify(invoker.getChannel()).shutdown();
         }
@@ -70,7 +72,9 @@ class AbstractGrpcClientTest {
     @Test
     void replacement_closes_old_channel_and_discards_only_competing_new_channels() {
         TestGrpcClient client = new TestGrpcClient();
-        String key = AbstractGrpcClient.createKey("10.0.0.1", 8081, AbstractGrpcClient.ServiceType.WORKER_STATUS);
+        String key =
+                AbstractGrpcClient.createKey(
+                        "10.0.0.1", 8081, AbstractGrpcClient.ServiceType.WORKER_STATUS);
         ManagedChannel original = mock(ManagedChannel.class);
         var first = client.putInvokerIfAbsent(key, original);
         ManagedChannel duplicate = mock(ManagedChannel.class);
@@ -82,12 +86,18 @@ class AbstractGrpcClientTest {
             var current = client.replaceInvoker(key, first, replacement);
             assertSame(current, client.replaceInvoker(key, first, lostReplacement));
 
-            assertEquals(AbstractGrpcClient.CloseReason.REPLACED, first.getCloseObservation().reason());
+            assertEquals(
+                    AbstractGrpcClient.CloseReason.REPLACED, first.getCloseObservation().reason());
             assertNull(current.getCloseObservation());
-            assertEquals(2, logs.list.stream()
-                    .filter(event -> event.getFormattedMessage().contains("reason=DUPLICATE_DISCARDED"))
-                    .filter(event -> event.getFormattedMessage().contains("force=false"))
-                    .count());
+            assertEquals(
+                    2,
+                    logs.list.stream()
+                            .filter(
+                                    event ->
+                                            event.getFormattedMessage()
+                                                    .contains("reason=DUPLICATE_DISCARDED"))
+                            .filter(event -> event.getFormattedMessage().contains("force=false"))
+                            .count());
             verify(original).shutdown();
             verify(duplicate).shutdown();
             verify(lostReplacement).shutdown();
@@ -121,12 +131,16 @@ class AbstractGrpcClientTest {
         TestGrpcClient client = new TestGrpcClient();
         ManagedChannel channel = mock(ManagedChannel.class);
         var invoker = client.new Invoker("worker", channel);
-        org.mockito.Mockito.doAnswer(ignored -> {
-            assertTrue(invoker.getCloseObservation().forced());
-            assertEquals(AbstractGrpcClient.CloseReason.DISCOVERY_REMOVED,
-                    invoker.getCloseObservation().reason());
-            return channel;
-        }).when(channel).shutdownNow();
+        org.mockito.Mockito.doAnswer(
+                        ignored -> {
+                            assertTrue(invoker.getCloseObservation().forced());
+                            assertEquals(
+                                    AbstractGrpcClient.CloseReason.DISCOVERY_REMOVED,
+                                    invoker.getCloseObservation().reason());
+                            return channel;
+                        })
+                .when(channel)
+                .shutdownNow();
 
         invoker.shutdown(AbstractGrpcClient.CloseReason.DISCOVERY_REMOVED);
 
@@ -141,15 +155,17 @@ class AbstractGrpcClientTest {
         var logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("flexlbLogger");
         Level previousLevel = logger.getLevel();
         AtomicInteger attempts = new AtomicInteger();
-        var failingAppender = new AppenderBase<ILoggingEvent>() {
-            @Override
-            protected void append(ILoggingEvent event) {
-                if (event.getFormattedMessage().startsWith("event=engine_grpc_channel_close")) {
-                    attempts.incrementAndGet();
-                    throw new OutOfMemoryError("diagnostic failure");
-                }
-            }
-        };
+        var failingAppender =
+                new AppenderBase<ILoggingEvent>() {
+                    @Override
+                    protected void append(ILoggingEvent event) {
+                        if (event.getFormattedMessage()
+                                .startsWith("event=engine_grpc_channel_close")) {
+                            attempts.incrementAndGet();
+                            throw new OutOfMemoryError("diagnostic failure");
+                        }
+                    }
+                };
         failingAppender.start();
         logger.setLevel(Level.INFO);
         logger.addAppender(failingAppender);
@@ -169,7 +185,8 @@ class AbstractGrpcClientTest {
     void interrupted_graceful_close_preserves_interrupt_and_forces_shutdown() throws Exception {
         TestGrpcClient client = new TestGrpcClient();
         ManagedChannel channel = mock(ManagedChannel.class);
-        when(channel.awaitTermination(1000, TimeUnit.MILLISECONDS)).thenThrow(new InterruptedException());
+        when(channel.awaitTermination(1000, TimeUnit.MILLISECONDS))
+                .thenThrow(new InterruptedException());
         var invoker = client.new Invoker("worker", channel);
         try {
             invoker.shutdown(AbstractGrpcClient.CloseReason.CLIENT_SHUTDOWN);
@@ -180,7 +197,8 @@ class AbstractGrpcClientTest {
         }
     }
 
-    private static final class CloseLogs extends ListAppender<ILoggingEvent> implements AutoCloseable {
+    private static final class CloseLogs extends ListAppender<ILoggingEvent>
+            implements AutoCloseable {
         private final ch.qos.logback.classic.Logger logger =
                 (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("flexlbLogger");
         private final Level previousLevel = logger.getLevel();

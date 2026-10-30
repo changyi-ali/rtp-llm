@@ -1,9 +1,7 @@
 package org.flexlb.cache.monitor;
-import org.flexlb.cache.telemetry.CacheMetricsReporter;
 
 import org.flexlb.cache.core.RecentCacheKeyWindow;
-import org.flexlb.dao.route.RoleType;
-import org.flexlb.enums.FlexMetricType;
+import org.flexlb.cache.telemetry.CacheMetricsReporter;
 import org.flexlb.metric.FlexMetricTags;
 import org.flexlb.metric.FlexMonitor;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,24 +12,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Field;
 
-import static org.flexlb.constant.MetricConstant.CACHE_AFFINITY_DECISION;
 import static org.flexlb.constant.MetricConstant.CACHE_CLUSTER_RECENT_HISTORY_COVERAGE_MS;
 import static org.flexlb.constant.MetricConstant.CACHE_CLUSTER_RECENT_HISTORY_READY;
 import static org.flexlb.constant.MetricConstant.CACHE_CLUSTER_RECENT_HIT_TOKENS;
 import static org.flexlb.constant.MetricConstant.CACHE_CLUSTER_RECENT_INPUT_TOKENS;
-import static org.flexlb.constant.MetricConstant.CACHE_ENGINE_LOCAL_BYTES;
-import static org.flexlb.constant.MetricConstant.CACHE_ENGINE_LOCAL_COUNT;
-import static org.flexlb.constant.MetricConstant.CACHE_RECENT_KEY_HIT_COUNT;
-import static org.flexlb.constant.MetricConstant.CACHE_RECENT_KEY_TOTAL_COUNT;
-import static org.flexlb.constant.MetricConstant.CACHE_ROUTING_CANDIDATE_MAX_HIT_TOKENS;
-import static org.flexlb.constant.MetricConstant.CACHE_ROUTING_SELECTED_MATCH_HIT_TOKENS;
-import static org.flexlb.constant.MetricConstant.CACHE_ROUTING_SELECTED_MATCH_TOTAL_TOKENS;
-import static org.flexlb.constant.MetricConstant.CACHE_THEORY_HIT_COUNT;
-import static org.flexlb.constant.MetricConstant.CACHE_THEORY_HIT_RATIO;
-import static org.flexlb.constant.MetricConstant.CACHE_THEORY_TOTAL_COUNT;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -81,6 +67,4 @@ class CacheMetricsReporterTest {
         verify(monitor).report(CACHE_CLUSTER_RECENT_HIT_TOKENS, tags, 216064L);
         verify(monitor).report(CACHE_CLUSTER_RECENT_INPUT_TOKENS, tags, 216513L);
     }
-
-
 }

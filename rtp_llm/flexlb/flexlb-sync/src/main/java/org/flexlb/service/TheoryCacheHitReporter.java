@@ -48,6 +48,12 @@ public class TheoryCacheHitReporter {
 
     @Autowired private ConfigService configService;
 
+    @Autowired(required = false)
+    private org.flexlb.cache.core.ShardedRecentCacheKeyWindow clusterHistory;
+
+    @Autowired(required = false)
+    private org.flexlb.consistency.MasterElectService masterElectService;
+
     private final AtomicLong droppedReportCount = new AtomicLong();
     private final ThreadPoolExecutor theoryHitReportExecutor =
             new ThreadPoolExecutor(
@@ -94,6 +100,9 @@ public class TheoryCacheHitReporter {
     private void reportRequest(BalanceContext balanceContext) {
         FlexlbConfig config = configService.loadBalanceConfig();
         if (!config.getObservability().getCacheHit().getRecentKeyWindow().isWriteEnabled()) {
+            if (clusterHistory != null) {
+                clusterHistory.reset();
+            }
             return;
         }
         Request request = balanceContext.getRequest();
@@ -111,6 +120,26 @@ public class TheoryCacheHitReporter {
                         snapshot.getRequestHitOccurrences(),
                         inputTokens,
                         request.getCacheKeyBlockSize());
+        if (clusterHistory != null
+                && masterElectService != null
+                && masterElectService.isNeedConsistency()
+                && masterElectService.isMaster()) {
+            long epoch = masterElectService.getLeadershipEpoch();
+            var clusterSnapshot =
+                    clusterHistory.recordForLeader(epoch, request.getBlockCacheKeys());
+            if (cacheMetricsReporter != null
+                    && config.getObservability().getCacheHit().isMetricsEnabled()
+                    && masterElectService.isMaster()
+                    && masterElectService.getLeadershipEpoch() == epoch) {
+                cacheMetricsReporter.reportClusterRecentCacheKeyHitMetrics(
+                        clusterSnapshot,
+                        theoryHitTokens(
+                                clusterSnapshot.getRequestHitOccurrences(),
+                                inputTokens,
+                                request.getCacheKeyBlockSize()),
+                        inputTokens);
+            }
+        }
         if (config.getObservability().getCacheHit().isRequestTraceLogEnabled()) {
             logTrace(balanceContext, snapshot, hitTokens, inputTokens);
         }

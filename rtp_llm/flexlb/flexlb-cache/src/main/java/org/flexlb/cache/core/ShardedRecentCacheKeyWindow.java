@@ -19,7 +19,8 @@ public class ShardedRecentCacheKeyWindow {
 
     @Autowired
     public ShardedRecentCacheKeyWindow(ConfigService configService) {
-        this(RecentCacheKeyWindow.resolveTimeWindowMs(configService),
+        this(
+                RecentCacheKeyWindow.resolveTimeWindowMs(configService),
                 RecentCacheKeyWindow.resolveMaxCacheKeys(configService),
                 System::currentTimeMillis);
     }
@@ -32,7 +33,8 @@ public class ShardedRecentCacheKeyWindow {
         return window.record(cacheKeys);
     }
 
-    public synchronized RecentCacheKeyWindow.Snapshot recordForLeader(long epoch, List<Long> cacheKeys) {
+    public synchronized RecentCacheKeyWindow.Snapshot recordForLeader(
+            long epoch, List<Long> cacheKeys) {
         if (leadershipEpoch != epoch) {
             window.reset();
             leadershipEpoch = epoch;
@@ -44,5 +46,4 @@ public class ShardedRecentCacheKeyWindow {
         window.reset();
         leadershipEpoch = Long.MIN_VALUE;
     }
-
 }

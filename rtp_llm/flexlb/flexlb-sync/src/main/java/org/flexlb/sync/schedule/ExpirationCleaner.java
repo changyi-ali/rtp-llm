@@ -33,54 +33,58 @@ public class ExpirationCleaner {
     private final WorkerDirectory workerDirectory;
 
     @Autowired
-    public ExpirationCleaner(
-            CacheAwareService cacheAwareService,
-            WorkerDirectory workerDirectory) {
-        this.cacheAwareService = Objects.requireNonNull(
-                cacheAwareService, "cacheAwareService");
-        this.workerDirectory = Objects.requireNonNull(
-                workerDirectory, "workerDirectory");
+    public ExpirationCleaner(CacheAwareService cacheAwareService, WorkerDirectory workerDirectory) {
+        this.cacheAwareService = Objects.requireNonNull(cacheAwareService, "cacheAwareService");
+        this.workerDirectory = Objects.requireNonNull(workerDirectory, "workerDirectory");
     }
 
-    @Scheduled(fixedRateString = "#{@configService.loadBalanceConfig().workerRegistry.health.cleanupIntervalMs}")
+    @Scheduled(
+            fixedRateString =
+                    "#{@configService.loadBalanceConfig().workerRegistry.health.cleanupIntervalMs}")
     public void retireUnavailableWorkers() {
         if (logger.isInfoEnabled()) {
-            logger.info("event=worker_counts phase=CLEANUP_START "
+            logger.info(
+                    "event=worker_counts phase=CLEANUP_START "
                             + "prefill_discovered={} prefill_published={} "
                             + "decode_discovered={} decode_published={} "
                             + "vit_discovered={} vit_published={} "
                             + "pdfusion_discovered={} pdfusion_published={}",
-                    workerDirectory.discoveredCount(RoleType.PREFILL), workerDirectory.routingCapacity(RoleType.PREFILL),
-                    workerDirectory.discoveredCount(RoleType.DECODE), workerDirectory.routingCapacity(RoleType.DECODE),
-                    workerDirectory.discoveredCount(RoleType.VIT), workerDirectory.routingCapacity(RoleType.VIT),
-                    workerDirectory.discoveredCount(RoleType.PDFUSION), workerDirectory.routingCapacity(RoleType.PDFUSION));
+                    workerDirectory.discoveredCount(RoleType.PREFILL),
+                    workerDirectory.routingCapacity(RoleType.PREFILL),
+                    workerDirectory.discoveredCount(RoleType.DECODE),
+                    workerDirectory.routingCapacity(RoleType.DECODE),
+                    workerDirectory.discoveredCount(RoleType.VIT),
+                    workerDirectory.routingCapacity(RoleType.VIT),
+                    workerDirectory.discoveredCount(RoleType.PDFUSION),
+                    workerDirectory.routingCapacity(RoleType.PDFUSION));
         }
         List<PendingRetirement> retirements = new ArrayList<>();
         for (RoleType role : RoleType.values()) {
-            retirements.addAll(beginPendingRetirements(
-                    workerDirectory.statusSnapshot(role), role));
+            retirements.addAll(beginPendingRetirements(workerDirectory.statusSnapshot(role), role));
         }
         completeRetirements(retirements);
     }
 
     /** Phase one: close unhealthy routing gates without waiting on drains. */
     private List<PendingRetirement> beginPendingRetirements(
-            Map<String, WorkerStatus> workerStatusMap,
-            RoleType role) {
+            Map<String, WorkerStatus> workerStatusMap, RoleType role) {
         if (workerStatusMap.isEmpty()) {
             return List.of();
         }
 
         List<PendingRetirement> retirements = new ArrayList<>();
-        for (Map.Entry<String, WorkerStatus> item
-                : workerStatusMap.entrySet()) {
+        for (Map.Entry<String, WorkerStatus> item : workerStatusMap.entrySet()) {
             WorkerStatus workerStatus = item.getValue();
             WorkerStatus.RetirementReason reason = workerStatus.retirementReason();
-            if (reason == null) { continue; }
+            if (reason == null) {
+                continue;
+            }
 
             EndpointRegistry.DetachedGeneration endpointToRetire;
             workerStatus.trace().record(Stage.RETIREMENT_CHECK_LOCK_ATTEMPT);
-            if (!workerStatus.lock.tryLock()) { continue; }
+            if (!workerStatus.lock.tryLock()) {
+                continue;
+            }
             try {
                 workerStatus.trace().record(Stage.RETIREMENT_CHECK_LOCK_ACQUIRED);
                 if (!workerDirectory.isCurrentStatus(role, item.getKey(), workerStatus)) {
@@ -89,17 +93,15 @@ public class ExpirationCleaner {
                 if (!workerStatus.isActiveGeneration()) {
                     continue;
                 }
-                endpointToRetire = workerDirectory.beginRetirement(
-                        role, item.getKey(), workerStatus, reason.name());
+                endpointToRetire =
+                        workerDirectory.beginRetirement(
+                                role, item.getKey(), workerStatus, reason.name());
             } finally {
                 workerStatus.lock.unlock();
                 workerStatus.trace().record(Stage.RETIREMENT_CHECK_LOCK_RELEASED);
             }
-            retirements.add(new PendingRetirement(
-                    workerStatus,
-                    role,
-                    item.getKey(),
-                    endpointToRetire));
+            retirements.add(
+                    new PendingRetirement(workerStatus, role, item.getKey(), endpointToRetire));
         }
         return retirements;
     }
@@ -116,8 +118,10 @@ public class ExpirationCleaner {
                     logger);
             logger.warn(
                     "Retiring unavailable worker: {}, role: {}, generation={}, reason={}",
-                    retirement.ipPort(), retirement.role(),
-                    retirement.workerStatus().getGenerationId(), retirement.workerStatus().retirementReason());
+                    retirement.ipPort(),
+                    retirement.role(),
+                    retirement.workerStatus().getGenerationId(),
+                    retirement.workerStatus().retirementReason());
         }
     }
 
@@ -125,6 +129,5 @@ public class ExpirationCleaner {
             WorkerStatus workerStatus,
             RoleType role,
             String ipPort,
-            EndpointRegistry.DetachedGeneration endpointToRetire) {
-    }
+            EndpointRegistry.DetachedGeneration endpointToRetire) {}
 }

@@ -8,9 +8,9 @@ import org.flexlb.cache.telemetry.CacheMetricsReporter;
 import org.flexlb.config.CacheMatchConfiguration;
 import org.flexlb.dao.cache.HostCacheMatch;
 import org.flexlb.dao.master.CacheStatus;
+import org.flexlb.dao.master.EndpointTrace;
 import org.flexlb.dao.master.WorkerHost;
 import org.flexlb.dao.master.WorkerStatus;
-import org.flexlb.dao.master.EndpointTrace;
 import org.flexlb.dao.route.RoleType;
 import org.flexlb.engine.grpc.nameresolver.EngineAddressResolver;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,9 +38,8 @@ public class LocalSyncCacheMatchProvider
             EngineAddressResolver addressResolver,
             CacheMatchConfiguration configuration) {
         this(kvCacheManager, cacheMetricsReporter);
-        if (configuration.isLocalSyncEnabled()) {
-            addressResolver.subscribe(this);
-        }
+        // WorkerDirectory retires generations and removes cache metadata after in-flight updates
+        // finish.
     }
 
     public LocalSyncCacheMatchProvider(
@@ -78,7 +77,8 @@ public class LocalSyncCacheMatchProvider
         return updateFromWorkerStatus(workerStatus, null);
     }
 
-    public WorkerCacheUpdateResult updateFromWorkerStatus(WorkerStatus workerStatus, EndpointTrace.Poll pollTrace) {
+    public WorkerCacheUpdateResult updateFromWorkerStatus(
+            WorkerStatus workerStatus, EndpointTrace.Poll pollTrace) {
         long startTime = System.nanoTime() / 1000;
         String logicalIpPort = workerStatus.getLogicalIpPort();
         String metricIpPort = workerStatus.getMetricIpPort();

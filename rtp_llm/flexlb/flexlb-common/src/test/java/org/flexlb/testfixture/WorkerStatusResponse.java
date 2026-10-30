@@ -64,5 +64,6 @@ public class WorkerStatusResponse {
      * to this value cannot be admitted by the Engine.
      */
     private long maxBatchTokensSize;
+
     private org.flexlb.dao.master.WorkerStatus.StepMetrics lastStepMetrics;
 }

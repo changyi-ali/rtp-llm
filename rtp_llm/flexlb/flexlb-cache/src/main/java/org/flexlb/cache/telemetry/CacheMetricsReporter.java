@@ -42,6 +42,8 @@ import static org.flexlb.constant.MetricConstant.CACHE_LOCAL_STANDBY_PREDICTED_T
 import static org.flexlb.constant.MetricConstant.CACHE_MATCH_ACTIVE_SOURCE;
 import static org.flexlb.constant.MetricConstant.CACHE_MATCH_SOURCE_CHANGE_QPS;
 import static org.flexlb.constant.MetricConstant.CACHE_MATCH_STANDBY_FALLBACK_QPS;
+import static org.flexlb.constant.MetricConstant.CACHE_RECENT_KEY_HIT_COUNT;
+import static org.flexlb.constant.MetricConstant.CACHE_RECENT_KEY_TOTAL_COUNT;
 import static org.flexlb.constant.MetricConstant.CACHE_REQUEST_TOTAL;
 import static org.flexlb.constant.MetricConstant.CACHE_ROUTING_CANDIDATE_MAX_HIT_TOKENS;
 import static org.flexlb.constant.MetricConstant.CACHE_ROUTING_SELECTED_MATCH_HIT_TOKENS;
@@ -541,16 +543,22 @@ public class CacheMetricsReporter {
     public void reportEngineViewsMapSize(int mapSize) {
         monitor.report(CACHE_ENGINE_VIEWS_MAP_SIZE, mapSize);
     }
-    public void reportClusterRecentCacheKeyHitMetrics(RecentCacheKeyWindow.Snapshot snapshot,
-                                                     long hitTokens, long inputTokens) {
-        FlexMetricTags tags = FlexMetricTags.of(
-                "timeWindowMs", String.valueOf(snapshot.getTimeWindowMs()), "isMaster", "true");
-        monitor.report(CACHE_CLUSTER_RECENT_HISTORY_COVERAGE_MS, tags, snapshot.getHistoryCoverageMs());
-        monitor.report(CACHE_CLUSTER_RECENT_HISTORY_READY, tags, snapshot.isHistoryComplete() ? 1L : 0L);
+
+    public void reportClusterRecentCacheKeyHitMetrics(
+            RecentCacheKeyWindow.Snapshot snapshot, long hitTokens, long inputTokens) {
+        FlexMetricTags tags =
+                FlexMetricTags.of(
+                        "timeWindowMs",
+                        String.valueOf(snapshot.getTimeWindowMs()),
+                        "isMaster",
+                        "true");
+        monitor.report(
+                CACHE_CLUSTER_RECENT_HISTORY_COVERAGE_MS, tags, snapshot.getHistoryCoverageMs());
+        monitor.report(
+                CACHE_CLUSTER_RECENT_HISTORY_READY, tags, snapshot.isHistoryComplete() ? 1L : 0L);
         if (snapshot.isHistoryComplete() && inputTokens > 0L) {
             monitor.report(CACHE_CLUSTER_RECENT_HIT_TOKENS, tags, hitTokens);
             monitor.report(CACHE_CLUSTER_RECENT_INPUT_TOKENS, tags, inputTokens);
         }
     }
-
 }

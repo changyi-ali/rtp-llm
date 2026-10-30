@@ -10,17 +10,28 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class EngineGrpcClient extends org.flexlb.engine.grpc.EngineGrpcClient {
-    public EngineGrpcClient(EngineAddressResolver resolver, GrpcChannelFactory factory,
-            GrpcReporter reporter, CacheMatchConfiguration configuration) {
+    public EngineGrpcClient(
+            EngineAddressResolver resolver,
+            GrpcChannelFactory factory,
+            GrpcReporter reporter,
+            CacheMatchConfiguration configuration) {
         this(resolver, factory, reporter, configuration, 5000L);
     }
 
     @Autowired
-    public EngineGrpcClient(EngineAddressResolver resolver, GrpcChannelFactory factory,
-            GrpcReporter reporter, CacheMatchConfiguration configuration,
+    public EngineGrpcClient(
+            EngineAddressResolver resolver,
+            GrpcChannelFactory factory,
+            GrpcReporter reporter,
+            CacheMatchConfiguration configuration,
             @Value("${flexlb.engine-grpc.enqueue-timeout-ms:5000}") long enqueueTimeoutMillis) {
-        super(resolver, factory.getExecutor(), factory.getEventLoopGroup(), reporter,
-                factory.getConnectTimeoutMillis(), enqueueTimeoutMillis);
+        super(
+                resolver,
+                factory.getExecutor(),
+                factory.getEventLoopGroup(),
+                reporter,
+                factory.getConnectTimeoutMillis(),
+                enqueueTimeoutMillis);
         cacheStatusEnabled = !configuration.isKvcmEnabled();
     }
 }

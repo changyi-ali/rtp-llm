@@ -47,29 +47,47 @@ class FlexlbGrpcDrainTest {
     void interruptedShutdownStillDrainsQueuedGrpcBufferCleanup() throws Exception {
         var config = mock(ConfigService.class);
         when(config.loadBalanceConfig()).thenReturn(org.flexlb.mock.TestFlexlbConfigs.create());
-        var grpc = new FlexlbGrpcServer(mock(FlexlbServiceImpl.class), config,
-                new MockEnvironment(), null, null, new GrpcServerTimingInterceptor(), null);
-        var executor = new java.util.concurrent.ThreadPoolExecutor(1, 1, 0L,
-                TimeUnit.SECONDS, new LinkedBlockingQueue<>(),
-                new FlexlbGrpcServer.CountingCallerRunsHandler());
+        var grpc =
+                new FlexlbGrpcServer(
+                        mock(FlexlbServiceImpl.class),
+                        config,
+                        new MockEnvironment(),
+                        null,
+                        null,
+                        new GrpcServerTimingInterceptor(),
+                        null);
+        var executor =
+                new java.util.concurrent.ThreadPoolExecutor(
+                        1,
+                        1,
+                        0L,
+                        TimeUnit.SECONDS,
+                        new LinkedBlockingQueue<>(),
+                        new FlexlbGrpcServer.CountingCallerRunsHandler());
         var occupied = new CountDownLatch(1);
         var release = new CountDownLatch(1);
-        executor.execute(() -> {
-            occupied.countDown();
-            try { release.await(); }
-            catch (InterruptedException error) { Thread.currentThread().interrupt(); }
-        });
+        executor.execute(
+                () -> {
+                    occupied.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException error) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
         assertTrue(occupied.await(3, TimeUnit.SECONDS));
         var buffer = io.netty.buffer.PooledByteBufAllocator.DEFAULT.directBuffer(65536);
         var serialized = new io.grpc.internal.SerializingExecutor(executor);
         serialized.execute(buffer::release);
         ReflectionTestUtils.setField(grpc, "grpcExecutor", executor);
         var interruptPreserved = new AtomicBoolean();
-        var shutdown = new Thread(() -> {
-            Thread.currentThread().interrupt();
-            grpc.shutdown();
-            interruptPreserved.set(Thread.currentThread().isInterrupted());
-        });
+        var shutdown =
+                new Thread(
+                        () -> {
+                            Thread.currentThread().interrupt();
+                            grpc.shutdown();
+                            interruptPreserved.set(Thread.currentThread().isInterrupted());
+                        });
         try {
             shutdown.start();
             shutdown.join(3000);
@@ -82,7 +100,9 @@ class FlexlbGrpcDrainTest {
             release.countDown();
             executor.shutdown();
             executor.awaitTermination(3, TimeUnit.SECONDS);
-            if (buffer.refCnt() > 0) { buffer.release(); }
+            if (buffer.refCnt() > 0) {
+                buffer.release();
+            }
         }
     }
 

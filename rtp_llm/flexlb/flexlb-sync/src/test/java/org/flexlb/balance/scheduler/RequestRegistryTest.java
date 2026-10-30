@@ -548,15 +548,21 @@ class RequestRegistryTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void inputIsRetainedOnlyUntilBatchRequestTerminates(boolean batch) throws Exception {
-        config.getDispatcher().setType(batch ? org.flexlb.config.DispatcherConfig.Type.BATCH
-                : org.flexlb.config.DispatcherConfig.Type.NON_BATCH);
+        config.getDispatcher()
+                .setType(
+                        batch
+                                ? org.flexlb.config.DispatcherConfig.Type.BATCH
+                                : org.flexlb.config.DispatcherConfig.Type.NON_BATCH);
         BalanceContext context = context(104L);
         var bytes = com.google.protobuf.ByteString.copyFrom(new byte[1024 * 1024]);
         context.setGenerateInputPb(bytes);
         var future = lifecycle.register(context);
         assertFalse(future.isDone());
-        if (batch) { assertSame(bytes, context.getGenerateInputPb()); }
-        else { assertNull(context.getGenerateInputPb()); }
+        if (batch) {
+            assertSame(bytes, context.getGenerateInputPb());
+        } else {
+            assertNull(context.getGenerateInputPb());
+        }
 
         lifecycle.cancelRequest(104L, 0L, CancelReason.CLIENT_CANCELLED);
         future.get(5, TimeUnit.SECONDS);
@@ -592,9 +598,15 @@ class RequestRegistryTest {
         assertNull(slot.activeItem());
         assertTrue(slot.isOpen());
         assertTrue(slot.isLiveGeneration());
-        IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
-                        slot, "recordCancellationLocked", CancelReason.CLIENT_CANCELLED, "client cancelled"));
+        IllegalStateException failure =
+                assertThrows(
+                        IllegalStateException.class,
+                        () ->
+                                org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                                        slot,
+                                        "recordCancellationLocked",
+                                        CancelReason.CLIENT_CANCELLED,
+                                        "client cancelled"));
         assertTrue(failure.getMessage().contains("requires slot lock"));
         assertEquals(RequestState.Phase.QUEUED, slot.snapshot().state());
     }
@@ -603,10 +615,10 @@ class RequestRegistryTest {
     void deliveredRequestsHaveNoExtraGlobalQuantityGate() {
         for (long id = 201; id <= 401; id++) {
             Registered registered = registerItem(id);
-            assertEquals(PlacementResult.Status.SUCCESS,
-                    commitRoute(lifecycle, registered));
-            assertNotNull(RequestLifecycleTestSupport.claimRoute(
-                    lifecycle, registered.item(), () -> true));
+            assertEquals(PlacementResult.Status.SUCCESS, commitRoute(lifecycle, registered));
+            assertNotNull(
+                    RequestLifecycleTestSupport.claimRoute(
+                            lifecycle, registered.item(), () -> true));
         }
         assertEquals(201, lifecycle.trackedRequestCount());
     }
@@ -620,8 +632,8 @@ class RequestRegistryTest {
         RequestState requested = lifecycle.cancelRequest("301", 0L, CancelReason.CLIENT_CANCELLED);
 
         assertEquals(RequestState.Phase.CANCEL_REQUESTED, requested.state());
-        assertFalse(future.isDone(),
-                "the admission mutation still owns rollback and terminal cleanup");
+        assertFalse(
+                future.isDone(), "the admission mutation still owns rollback and terminal cleanup");
 
         scope.close();
 
@@ -641,7 +653,8 @@ class RequestRegistryTest {
 
         admission.close();
 
-        assertEquals(StrategyErrorType.REQUEST_CANCELLED.getErrorCode(),
+        assertEquals(
+                StrategyErrorType.REQUEST_CANCELLED.getErrorCode(),
                 future.get(5, TimeUnit.SECONDS).getCode());
         assertEquals(RequestState.Phase.CANCELLED, lifecycle.getRequestState("303", 0L).state());
         assertEquals(0, lifecycle.trackedRequestCount());
@@ -657,7 +670,8 @@ class RequestRegistryTest {
         admission.terminate(Response.error(StrategyErrorType.RESOURCE_EXHAUSTED));
         admission.close();
 
-        assertEquals(StrategyErrorType.REQUEST_CANCELLED.getErrorCode(),
+        assertEquals(
+                StrategyErrorType.REQUEST_CANCELLED.getErrorCode(),
                 future.get(5, TimeUnit.SECONDS).getCode());
         assertEquals(RequestState.Phase.CANCELLED, lifecycle.getRequestState("304", 0L).state());
         assertEquals(0, lifecycle.trackedRequestCount());
@@ -668,16 +682,18 @@ class RequestRegistryTest {
         CompletableFuture<Response> future = lifecycle.register(context(302L));
         CountDownLatch published = new CountDownLatch(1);
         AtomicReference<String> callbackThread = new AtomicReference<>();
-        future.thenAccept(response -> {
-            callbackThread.set(Thread.currentThread().getName());
-            published.countDown();
-        });
+        future.thenAccept(
+                response -> {
+                    callbackThread.set(Thread.currentThread().getName());
+                    published.countDown();
+                });
 
         Response rejection = Response.error(StrategyErrorType.RESOURCE_EXHAUSTED);
         assertTrue(lifecycle.publishDecisionResponseAsync("302", future, rejection));
         assertTrue(published.await(5, TimeUnit.SECONDS));
         assertNotEquals(Thread.currentThread().getName(), callbackThread.get());
-        assertEquals(StrategyErrorType.RESOURCE_EXHAUSTED.getErrorCode(),
+        assertEquals(
+                StrategyErrorType.RESOURCE_EXHAUSTED.getErrorCode(),
                 future.get(5, TimeUnit.SECONDS).getCode());
     }
 
@@ -691,20 +707,21 @@ class RequestRegistryTest {
             Future<Boolean> shutdownOwner =
                     executor.submit(lifecycle::closeAdmissionAndAwaitMutations);
             awaitCondition(lifecycle::isShuttingDown);
-            assertFalse(shutdownOwner.isDone(),
+            assertFalse(
+                    shutdownOwner.isDone(),
                     "shutdown must not overtake an exact admission mutation");
 
-            CompletableFuture<Response> rejected =
-                    lifecycle.register(context(402L));
-            assertEquals(StrategyErrorType.DISPATCH_FAILED.getErrorCode(),
-                    rejected.join().getCode());
+            CompletableFuture<Response> rejected = lifecycle.register(context(402L));
+            assertEquals(
+                    StrategyErrorType.DISPATCH_FAILED.getErrorCode(), rejected.join().getCode());
 
             held.close();
             assertTrue(shutdownOwner.get(5, TimeUnit.SECONDS));
             lifecycle.closeOutstandingAndTerminalize();
             lifecycle.closeExpiration();
             lifecycle.closePublisher();
-            assertEquals(StrategyErrorType.DISPATCH_FAILED.getErrorCode(),
+            assertEquals(
+                    StrategyErrorType.DISPATCH_FAILED.getErrorCode(),
                     heldFuture.get(5, TimeUnit.SECONDS).getCode());
         } finally {
             executor.shutdownNow();
@@ -721,8 +738,7 @@ class RequestRegistryTest {
 
         RequestState exact = lifecycle.cancelRequest("501", 0L, CancelReason.CLIENT_CANCELLED);
         assertNotNull(exact);
-        assertEquals(StrategyErrorType.REQUEST_CANCELLED.getErrorCode(),
-                future.join().getCode());
+        assertEquals(StrategyErrorType.REQUEST_CANCELLED.getErrorCode(), future.join().getCode());
     }
 
     @Test
@@ -731,8 +747,15 @@ class RequestRegistryTest {
         assertEquals(PlacementResult.Status.SUCCESS, commitRoute(lifecycle, registered));
         RequestSlot slot = lifecycle.requestSlot("602");
         synchronized (slot) {
-            org.springframework.test.util.ReflectionTestUtils.<RequestSlot.EngineObservation>invokeMethod(slot, "applyPrefillStatusLocked", registered.item().prefillEp(), org.flexlb.dao.route.RoleType.PREFILL,
-                    org.flexlb.balance.endpoint.PrefillState.WorkerStatusFact.active(registered.item().execution()), System.currentTimeMillis());
+            org.springframework.test.util.ReflectionTestUtils
+                    .<RequestSlot.EngineObservation>invokeMethod(
+                            slot,
+                            "applyPrefillStatusLocked",
+                            registered.item().prefillEp(),
+                            org.flexlb.dao.route.RoleType.PREFILL,
+                            org.flexlb.balance.endpoint.PrefillState.WorkerStatusFact.active(
+                                    registered.item().execution()),
+                            System.currentTimeMillis());
         }
         lifecycle.cancelRequest("602", 0L, CancelReason.DEADLINE_EXCEEDED);
         assertEquals(RequestState.Phase.TIMED_OUT, lifecycle.getRequestState("602", 0L).state());
@@ -746,9 +769,11 @@ class RequestRegistryTest {
     void expiredArrivalDoesNotDisturbTheWaitingRequests() throws Exception {
         var low = lifecycle.register(context(1));
         var expired = context(2);
-        expired.setSchedulingMetadata(SchedulingMetadata.explicit(90, System.currentTimeMillis() - 1L));
+        expired.setSchedulingMetadata(
+                SchedulingMetadata.explicit(90, System.currentTimeMillis() - 1L));
         // QUEUE expiry before placement is admission capacity exhaustion (8431).
-        assertEquals(StrategyErrorType.RESOURCE_EXHAUSTED.getErrorCode(),
+        assertEquals(
+                StrategyErrorType.RESOURCE_EXHAUSTED.getErrorCode(),
                 lifecycle.register(expired).get(5, TimeUnit.SECONDS).getCode());
         assertFalse(low.isDone());
         assertEquals(1, lifecycle.trackedRequestCount());
@@ -802,7 +827,8 @@ class RequestRegistryTest {
         var transaction = mock(BatchDeliveryStrategy.BatchTransaction.class);
         when(transaction.batchId()).thenReturn(0L);
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> lifecycle.claimBatchDelivery(registered.item(), transaction));
 
         org.mockito.Mockito.verify(transaction, org.mockito.Mockito.never())
@@ -812,23 +838,32 @@ class RequestRegistryTest {
     }
 
     @Test
-    void invalidResultDoesNotConsumeDeliveryAndDuplicateResultCannotChangeItsOutcome() throws Exception {
+    void invalidResultDoesNotConsumeDeliveryAndDuplicateResultCannotChangeItsOutcome()
+            throws Exception {
         Registered registered = registerItem(705L);
         assertEquals(PlacementResult.Status.SUCCESS, commitRoute(lifecycle, registered));
-        DeliveryClaim claim = RequestLifecycleTestSupport.claimBatch(lifecycle, registered.item(), 23L, () -> true);
+        DeliveryClaim claim =
+                RequestLifecycleTestSupport.claimBatch(
+                        lifecycle, registered.item(), 23L, () -> true);
         assertNotNull(claim);
 
         assertThrows(NullPointerException.class, () -> claim.complete(null));
         assertEquals(RequestState.Phase.DISPATCHING, lifecycle.getRequestState("705", 23L).state());
         claim.complete(org.flexlb.balance.delivery.DeliveryResult.delivered());
         assertTrue(registered.future().get(5, TimeUnit.SECONDS).isSuccess());
-        assertThrows(IllegalStateException.class, () -> claim.complete(
-                org.flexlb.balance.delivery.DeliveryResult.notSent(new IllegalStateException("duplicate failure"))));
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        claim.complete(
+                                org.flexlb.balance.delivery.DeliveryResult.notSent(
+                                        new IllegalStateException("duplicate failure"))));
 
         assertEquals(
                 RequestState.Phase.ACKNOWLEDGED, lifecycle.getRequestState("705", 23L).state());
         org.mockito.Mockito.verify(registered.item().decodeEp(), org.mockito.Mockito.never())
-                .release(registered.item().decodeReservation(), DecodeEndpoint.ReleaseReason.NOT_SENT);
+                .release(
+                        registered.item().decodeReservation(),
+                        DecodeEndpoint.ReleaseReason.NOT_SENT);
     }
 
     private WeakReference<BalanceContext> cancelAndReferenceContext(long requestId) {

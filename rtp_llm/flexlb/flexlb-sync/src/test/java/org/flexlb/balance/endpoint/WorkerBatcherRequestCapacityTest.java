@@ -10,9 +10,9 @@ import org.flexlb.dao.SchedulingMetadata;
 import org.flexlb.dao.loadbalance.Request;
 import org.flexlb.dao.loadbalance.Response;
 import org.flexlb.dao.master.WorkerStatus;
-import org.flexlb.testfixture.WorkerStatusResponse;
 import org.flexlb.dao.route.RoleType;
 import org.flexlb.service.monitor.BatchSchedulerReporter;
+import org.flexlb.testfixture.WorkerStatusResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -52,19 +52,32 @@ class WorkerBatcherRequestCapacityTest {
             config.getScheduler().getDecision().setMaxCollectionWaitMs(0L);
         }
         var delivered = new java.util.concurrent.LinkedBlockingQueue<ScheduledRequest>();
-        var runtime = new EndpointTestSupport.TestRequestRuntime() {
-            @Override
-            void onCompleted(org.flexlb.balance.scheduler.RequestSlot.DeliveryClaim claim,
-                    org.flexlb.balance.delivery.DeliveryResult result) {
-                delivered.add((ScheduledRequest) org.springframework.test.util.ReflectionTestUtils.getField(claim, "item"));
-            }
-        };
+        var runtime =
+                new EndpointTestSupport.TestRequestRuntime() {
+                    @Override
+                    void onCompleted(
+                            org.flexlb.balance.scheduler.RequestSlot.DeliveryClaim claim,
+                            org.flexlb.balance.delivery.DeliveryResult result) {
+                        delivered.add(
+                                (ScheduledRequest)
+                                        org.springframework.test.util.ReflectionTestUtils.getField(
+                                                claim, "item"));
+                    }
+                };
         try (Fixture fixture = fixture(config, runtime)) {
             DeliveryStrategy live = EndpointTestSupport.liveRouteStrategy(runtime);
-            doAnswer(invocation -> live.prepare(invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2)))
-                    .when(fixture.delivery).prepare(anyList(), any(), any());
+            doAnswer(
+                            invocation ->
+                                    live.prepare(
+                                            invocation.getArgument(0),
+                                            invocation.getArgument(1),
+                                            invocation.getArgument(2)))
+                    .when(fixture.delivery)
+                    .prepare(anyList(), any(), any());
             for (long id = 1L; id <= 4L; id++) {
-                assertTrue(EndpointTestSupport.offer(fixture.endpoint, item(config, fixture.endpoint, id)));
+                assertTrue(
+                        EndpointTestSupport.offer(
+                                fixture.endpoint, item(config, fixture.endpoint, id)));
             }
             ScheduledRequest first = delivered.poll(3, TimeUnit.SECONDS);
             ScheduledRequest second = delivered.poll(3, TimeUnit.SECONDS);
@@ -72,10 +85,13 @@ class WorkerBatcherRequestCapacityTest {
             org.junit.jupiter.api.Assertions.assertNotNull(second);
             org.junit.jupiter.api.Assertions.assertNull(delivered.poll(150, TimeUnit.MILLISECONDS));
             assertEquals(2, fixture.endpoint.captureQueueSnapshot().items().size());
-            assertFalse(fixture.endpoint.canAcceptRequest(), "dispatch slots remain full while the suffix waits");
+            assertFalse(
+                    fixture.endpoint.canAcceptRequest(),
+                    "dispatch slots remain full while the suffix waits");
             assertTrue(fixture.endpoint.releaseCommittedItem(first.execution()));
             ScheduledRequest third = delivered.poll(3, TimeUnit.SECONDS);
-            org.junit.jupiter.api.Assertions.assertNotNull(third, "completion must wake the worker without another enqueue");
+            org.junit.jupiter.api.Assertions.assertNotNull(
+                    third, "completion must wake the worker without another enqueue");
             assertFalse(fixture.endpoint.releaseCommittedItem(first.execution()));
             org.junit.jupiter.api.Assertions.assertNull(delivered.poll(150, TimeUnit.MILLISECONDS));
             assertTrue(fixture.endpoint.releaseCommittedItem(second.execution()));
@@ -89,30 +105,39 @@ class WorkerBatcherRequestCapacityTest {
 
     @Test
     @Timeout(10)
-    void cancelledPreparedRouteKeepsItsSlotUntilTransactionRollbackAndRetirementDrains() throws Exception {
+    void cancelledPreparedRouteKeepsItsSlotUntilTransactionRollbackAndRetirementDrains()
+            throws Exception {
         FlexlbConfig config = productionConfig();
         config.setDispatcher(DispatcherConfig.nonBatch());
         config.getDispatcher().setMaxInflightPerPrefillWorker(1);
-        try (Fixture fixture = fixture(config); var waiter = Executors.newSingleThreadExecutor()) {
+        try (Fixture fixture = fixture(config);
+                var waiter = Executors.newSingleThreadExecutor()) {
             ScheduledRequest item = item(config, fixture.endpoint, 1L);
             assertTrue(EndpointTestSupport.offer(fixture.endpoint, item));
             DeliveryStrategy live = EndpointTestSupport.liveRouteStrategy(fixture.runtime);
             java.util.concurrent.Future<?> retirement;
-            try (var transaction = live.prepare(List.of(item), fixture.endpoint.getPredictor().evaluator(),
-                    java.util.OptionalLong.empty())) {
+            try (var transaction =
+                    live.prepare(
+                            List.of(item),
+                            fixture.endpoint.getPredictor().evaluator(),
+                            java.util.OptionalLong.empty())) {
                 assertEquals(List.of(item), transaction.items());
                 assertFalse(fixture.endpoint.routeAdmissionAvailability().isAvailable());
                 assertTrue(fixture.endpoint.removeQueued(item, "cancel during preparation"));
-                assertFalse(fixture.endpoint.routeAdmissionAvailability().isAvailable(),
+                assertFalse(
+                        fixture.endpoint.routeAdmissionAvailability().isAvailable(),
                         "the transaction still owns the provisional slot after cancellation");
                 fixture.endpoint.close();
                 CountDownLatch awaitingRetirement = new CountDownLatch(1);
-                retirement = waiter.submit(() -> {
-                    awaitingRetirement.countDown();
-                    fixture.endpoint.awaitRetirement();
-                });
+                retirement =
+                        waiter.submit(
+                                () -> {
+                                    awaitingRetirement.countDown();
+                                    fixture.endpoint.awaitRetirement();
+                                });
                 assertTrue(awaitingRetirement.await(1, TimeUnit.SECONDS));
-                org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.TimeoutException.class,
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        java.util.concurrent.TimeoutException.class,
                         () -> retirement.get(100, TimeUnit.MILLISECONDS),
                         "retirement must wait for the prepared transaction to return its lease");
             }
@@ -131,8 +156,11 @@ class WorkerBatcherRequestCapacityTest {
             assertTrue(EndpointTestSupport.offer(fixture.endpoint, item));
             DeliveryStrategy live = EndpointTestSupport.liveRouteStrategy(fixture.runtime);
             for (int attempt = 0; attempt < 2; attempt++) {
-                try (var transaction = live.prepare(List.of(item), fixture.endpoint.getPredictor().evaluator(),
-                        java.util.OptionalLong.empty())) {
+                try (var transaction =
+                        live.prepare(
+                                List.of(item),
+                                fixture.endpoint.getPredictor().evaluator(),
+                                java.util.OptionalLong.empty())) {
                     assertEquals(List.of(item), transaction.items());
                     assertFalse(fixture.endpoint.routeAdmissionAvailability().isAvailable());
                 }
@@ -150,24 +178,35 @@ class WorkerBatcherRequestCapacityTest {
         config.getDispatcher().setMaxInflightPerPrefillWorker(4);
         config.getScheduler().getDecision().setMaxRequests(1);
         try (Fixture fixture = fixture(config);
-             var writers = Executors.newFixedThreadPool(8)) {
+                var writers = Executors.newFixedThreadPool(8)) {
             var results = new ArrayList<java.util.concurrent.Future<ScheduledRequest>>();
             for (long id = 1L; id <= 64L; id++) {
                 ScheduledRequest item = item(config, fixture.endpoint, id);
-                results.add(writers.submit(() -> EndpointTestSupport.offer(fixture.endpoint, item) ? item : null));
+                results.add(
+                        writers.submit(
+                                () ->
+                                        EndpointTestSupport.offer(fixture.endpoint, item)
+                                                ? item
+                                                : null));
             }
             var admitted = new ArrayList<ScheduledRequest>();
             for (var result : results) {
                 ScheduledRequest owned = result.get();
-                if (owned != null) { admitted.add(owned); }
+                if (owned != null) {
+                    admitted.add(owned);
+                }
             }
             assertEquals(64, admitted.size(), "waiting requests do not consume dispatch slots");
             assertEquals(64L, fixture.endpoint.observedRequestCount());
             ScheduledRequest first = admitted.getFirst();
-            assertFalse(fixture.endpoint.removeQueued(item(config, fixture.endpoint, first.requestId()), "stale identity"));
+            assertFalse(
+                    fixture.endpoint.removeQueued(
+                            item(config, fixture.endpoint, first.requestId()), "stale identity"));
             assertTrue(fixture.endpoint.canAcceptRequest());
             assertTrue(fixture.endpoint.removeQueued(first, "cancel exact queued request"));
-            assertTrue(EndpointTestSupport.offer(fixture.endpoint, item(config, fixture.endpoint, 71L)));
+            assertTrue(
+                    EndpointTestSupport.offer(
+                            fixture.endpoint, item(config, fixture.endpoint, 71L)));
             assertEquals(64L, fixture.endpoint.observedRequestCount());
         }
     }
@@ -179,10 +218,14 @@ class WorkerBatcherRequestCapacityTest {
         config.getScheduler().setDecision(DecisionPolicyConfig.single());
         try (Fixture fixture = fixture(config)) {
             for (long requestId = 1L; requestId <= 2L; requestId++) {
-                assertTrue(EndpointTestSupport.offer(fixture.endpoint, item(config, fixture.endpoint, requestId)));
+                assertTrue(
+                        EndpointTestSupport.offer(
+                                fixture.endpoint, item(config, fixture.endpoint, requestId)));
             }
             assertEquals(2L, fixture.endpoint.observedRequestCount());
-            assertTrue(EndpointTestSupport.offer(fixture.endpoint, item(config, fixture.endpoint, 3L)));
+            assertTrue(
+                    EndpointTestSupport.offer(
+                            fixture.endpoint, item(config, fixture.endpoint, 3L)));
         }
     }
 
@@ -197,18 +240,35 @@ class WorkerBatcherRequestCapacityTest {
         try (Fixture fixture = fixture(config)) {
             CountDownLatch prepared = new CountDownLatch(1);
             AtomicInteger groupSize = new AtomicInteger();
-            doAnswer(invocation -> {
-                List<ScheduledRequest> items = invocation.getArgument(0);
-                groupSize.set(items.size());
-                prepared.countDown();
-                return fixture.parked.prepare(items, invocation.getArgument(1), invocation.getArgument(2));
-            }).when(fixture.delivery).prepare(anyList(), any(), any());
-            assertEquals(2, fixture.endpoint.captureRouteProjectionInputs().queue().constraints().maxRequests());
-            assertTrue(EndpointTestSupport.offer(fixture.endpoint, item(config, fixture.endpoint, 1L)));
+            doAnswer(
+                            invocation -> {
+                                List<ScheduledRequest> items = invocation.getArgument(0);
+                                groupSize.set(items.size());
+                                prepared.countDown();
+                                return fixture.parked.prepare(
+                                        items,
+                                        invocation.getArgument(1),
+                                        invocation.getArgument(2));
+                            })
+                    .when(fixture.delivery)
+                    .prepare(anyList(), any(), any());
+            assertEquals(
+                    2,
+                    fixture.endpoint
+                            .captureRouteProjectionInputs()
+                            .queue()
+                            .constraints()
+                            .maxRequests());
+            assertTrue(
+                    EndpointTestSupport.offer(
+                            fixture.endpoint, item(config, fixture.endpoint, 1L)));
             assertFalse(prepared.await(100L, TimeUnit.MILLISECONDS));
-            assertTrue(EndpointTestSupport.offer(fixture.endpoint, item(config, fixture.endpoint, 2L)));
+            assertTrue(
+                    EndpointTestSupport.offer(
+                            fixture.endpoint, item(config, fixture.endpoint, 2L)));
             assertTrue(prepared.await(5L, TimeUnit.SECONDS));
-            assertEquals(2, groupSize.get(), "concurrent batch limit must not change each group's size");
+            assertEquals(
+                    2, groupSize.get(), "concurrent batch limit must not change each group's size");
         }
     }
 
@@ -223,16 +283,21 @@ class WorkerBatcherRequestCapacityTest {
                     ScheduledRequest queued = item(config, fixture.endpoint, id);
                     items.add(queued);
                     assertEquals(2, queued.maxInflightBatchesPerPrefillWorker());
-                    assertTrue(EndpointTestSupport.offer(fixture.endpoint, queued),
+                    assertTrue(
+                            EndpointTestSupport.offer(fixture.endpoint, queued),
                             "BATCH does not impose an additional request-count limit on the waiting queue");
                 }
                 for (int index = 0; index < 2; index++) {
-                    var result = fixture.endpoint.reserveBatch(items.get(index), 100L + index,
-                            items.get(index).maxInflightBatchesPerPrefillWorker());
+                    var result =
+                            fixture.endpoint.reserveBatch(
+                                    items.get(index),
+                                    100L + index,
+                                    items.get(index).maxInflightBatchesPerPrefillWorker());
                     assertEquals(PrefillState.CapacityStatus.ACQUIRED, result.status());
                     reservations.add(result.reservation());
                 }
-                assertEquals(PrefillState.CapacityStatus.CAPACITY_FULL,
+                assertEquals(
+                        PrefillState.CapacityStatus.CAPACITY_FULL,
                         fixture.endpoint.reserveBatch(items.get(2), 102L, 2).status());
                 reservations.removeFirst().close();
                 var replacement = fixture.endpoint.reserveBatch(items.get(2), 102L, 2);
@@ -251,42 +316,66 @@ class WorkerBatcherRequestCapacityTest {
         return config;
     }
 
-    private static ScheduledRequest item(FlexlbConfig config, PrefillEndpoint endpoint, long requestId) {
+    private static ScheduledRequest item(
+            FlexlbConfig config, PrefillEndpoint endpoint, long requestId) {
         return item(config, endpoint, requestId, 50);
     }
 
-    private static ScheduledRequest item(FlexlbConfig config, PrefillEndpoint endpoint, long requestId, int priority) {
+    private static ScheduledRequest item(
+            FlexlbConfig config, PrefillEndpoint endpoint, long requestId, int priority) {
         Request request = new Request();
         request.setRequestId(Long.toString(requestId));
         request.setSeqLen(100L);
         BalanceContext context = new BalanceContext(config);
         context.setRequest(request);
         context.setSchedulingMetadata(SchedulingMetadata.explicit(priority, Long.MAX_VALUE));
-        return new ScheduledRequest(context, new CompletableFuture<Response>(), null, null, null,
-                endpoint, null, null, System.currentTimeMillis());
+        return new ScheduledRequest(
+                context,
+                new CompletableFuture<Response>(),
+                null,
+                null,
+                null,
+                endpoint,
+                null,
+                null,
+                System.currentTimeMillis());
     }
 
     private static Fixture fixture(FlexlbConfig config) {
         return fixture(config, EndpointTestSupport.requestRuntime());
     }
 
-    private static Fixture fixture(FlexlbConfig config, EndpointTestSupport.TestRequestRuntime runtime) {
-        WorkerStatus status = WorkerStatus.createDiscovered(RoleType.PREFILL, "test", "127.0.0.1", 8080, 9090, "test");
+    private static Fixture fixture(
+            FlexlbConfig config, EndpointTestSupport.TestRequestRuntime runtime) {
+        WorkerStatus status =
+                WorkerStatus.createDiscovered(
+                        RoleType.PREFILL, "test", "127.0.0.1", 8080, 9090, "test");
         WorkerStatusResponse response = new WorkerStatusResponse();
         response.setRole(RoleType.PREFILL);
         response.setAlive(true);
         EndpointTestSupport.publishStatus(status, response);
         DeliveryStrategy parked = EndpointTestSupport.routeStrategy(runtime);
         DeliveryStrategy delivery = mock(DeliveryStrategy.class, delegatesTo(parked));
-        PrefillEndpoint endpoint = new PrefillEndpoint(status, config, delivery,
-                runtime.events(), mock(BatchSchedulerReporter.class));
+        PrefillEndpoint endpoint =
+                new PrefillEndpoint(
+                        status,
+                        config,
+                        delivery,
+                        runtime.events(),
+                        mock(BatchSchedulerReporter.class));
         endpoint.startGeneration();
         return new Fixture(endpoint, delivery, parked, runtime);
     }
 
-    private record Fixture(PrefillEndpoint endpoint, DeliveryStrategy delivery, DeliveryStrategy parked,
-                           EndpointTestSupport.TestRequestRuntime runtime)
+    private record Fixture(
+            PrefillEndpoint endpoint,
+            DeliveryStrategy delivery,
+            DeliveryStrategy parked,
+            EndpointTestSupport.TestRequestRuntime runtime)
             implements AutoCloseable {
-        public void close() { endpoint.close(); endpoint.awaitRetirement(); }
+        public void close() {
+            endpoint.close();
+            endpoint.awaitRetirement();
+        }
     }
 }

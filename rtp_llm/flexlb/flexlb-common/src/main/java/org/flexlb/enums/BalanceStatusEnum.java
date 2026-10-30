@@ -25,9 +25,8 @@ public enum BalanceStatusEnum {
     WORKER_STATUS_GRPC_FAILED(3108, "Worker status RPC failed; fault origin unconfirmed!"),
     WORKER_STATUS_CONNECTION_FAILED(3109, "Worker status connection failed!"),
     WORKER_STATUS_SERVER_FAILED(3110, "Worker status reported alive=false!"),
-    MASTER_STATUS_BIND_FAILED(3111, "Master socket binding failed!")
+    MASTER_STATUS_BIND_FAILED(3111, "Master socket binding failed!");
 
-    ;
     private final int code;
 
     private final String message;

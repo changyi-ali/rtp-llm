@@ -1,6 +1,5 @@
 package org.flexlb.balance.scheduler;
 
-import org.flexlb.testfixture.WorkerStatusTestFixtures;
 import org.flexlb.balance.delivery.DeliveryMetrics;
 import org.flexlb.balance.delivery.DeliveryResult;
 import org.flexlb.balance.endpoint.DecodeEndpoint;
@@ -15,11 +14,12 @@ import org.flexlb.config.SchedulerConfig;
 import org.flexlb.dao.loadbalance.Response;
 import org.flexlb.dao.loadbalance.ServerStatus;
 import org.flexlb.dao.master.WorkerStatus;
-import org.flexlb.testfixture.WorkerStatusResponse;
 import org.flexlb.dao.route.RoleType;
-import org.flexlb.service.monitor.StatusFailureReporter;
 import org.flexlb.service.monitor.BatchSchedulerReporter;
 import org.flexlb.service.monitor.RequestSchedulerReporter;
+import org.flexlb.service.monitor.StatusFailureReporter;
+import org.flexlb.testfixture.WorkerStatusResponse;
+import org.flexlb.testfixture.WorkerStatusTestFixtures;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -48,16 +48,22 @@ class RequestConfirmationTimeoutTest {
         config.setScheduler(SchedulerConfig.direct());
         SchedulingTestConfig.useNonBatchDispatcher(config);
         config.getDispatcher().setMaxInflightPerPrefillWorker(1);
-        config.getRequestLifecycle().getRequest().setTimeoutMs(
-                waiting == ConfirmationWait.AUTOMATIC_TIMER ? 300L : TIMEOUT_MS);
+        config.getRequestLifecycle()
+                .getRequest()
+                .setTimeoutMs(waiting == ConfirmationWait.AUTOMATIC_TIMER ? 300L : TIMEOUT_MS);
         ConfigService service = mock(ConfigService.class);
         when(service.loadBalanceConfig()).thenReturn(config);
         var reporter = mock(BatchSchedulerReporter.class);
         var requestReporter = mock(RequestSchedulerReporter.class);
         var requests = new RequestRegistry(service, reporter, requestReporter);
         var projector = new EndpointEventProjector(requests, mock(StatusFailureReporter.class));
-        var endpoints = new EndpointRegistry(service, projector, reporter,
-                new RouteDeliveryStrategy(requests, new DeliveryMetrics(reporter)), new PlacementAvailability());
+        var endpoints =
+                new EndpointRegistry(
+                        service,
+                        projector,
+                        reporter,
+                        new RouteDeliveryStrategy(requests, new DeliveryMetrics(reporter)),
+                        new PlacementAvailability());
         var runtime = new SchedulerRuntime(requests, endpoints, reporter, requestReporter);
         DecodeEndpoint decode = null;
         try {
@@ -65,8 +71,18 @@ class RequestConfirmationTimeoutTest {
             PrefillEndpoint prefill;
             prefillWorker.lock.lock();
             try {
-                prefill = (PrefillEndpoint) endpoints.publishPreparedEndpoint(prefillWorker.getIpPort(),
-                        prefillWorker, WorkerStatusTestFixtures.prepare(prefillWorker, WorkerStatusTestFixtures.observation(prefillWorker, status(RoleType.PREFILL)))).endpoint();
+                prefill =
+                        (PrefillEndpoint)
+                                endpoints
+                                        .publishPreparedEndpoint(
+                                                prefillWorker.getIpPort(),
+                                                prefillWorker,
+                                                WorkerStatusTestFixtures.prepare(
+                                                        prefillWorker,
+                                                        WorkerStatusTestFixtures.observation(
+                                                                prefillWorker,
+                                                                status(RoleType.PREFILL))))
+                                        .endpoint();
             } finally {
                 prefillWorker.lock.unlock();
             }
@@ -79,8 +95,11 @@ class RequestConfirmationTimeoutTest {
                         decode.reserve(pin, Long.toString(REQUEST_ID), 16L, 32L, 50, capacity);
                 assertNotNull(reservation);
                 var acquired = decode.acquireDispatchPermit(reservation, capacity);
-                assertEquals(DecodeEndpoint.EngineDispatchPermitAcquireStatus.ACQUIRED, acquired.status());
-                assertEquals(DecodeEndpoint.EngineDispatchPermitTransferStatus.TRANSFERRED,
+                assertEquals(
+                        DecodeEndpoint.EngineDispatchPermitAcquireStatus.ACQUIRED,
+                        acquired.status());
+                assertEquals(
+                        DecodeEndpoint.EngineDispatchPermitTransferStatus.TRANSFERRED,
                         acquired.permit().dispatch());
             }
             var context = RequestLifecycleTestSupport.context(config, REQUEST_ID);
@@ -107,29 +126,44 @@ class RequestConfirmationTimeoutTest {
                     var pin = prefill.tryPinGeneration()) {
                 assertNotNull(mutation);
                 assertNotNull(pin);
-                assertTrue(requests.commitItemForPublication(item, () -> {
-                    var reserved = prefill.reserveUnqueuedRoute(pin, item, 30_000L);
-                    assertEquals(PrefillState.CapacityStatus.ACQUIRED, reserved.status());
-                    routeReservation.set(reserved.reservation());
-                    return true;
-                }));
+                assertTrue(
+                        requests.commitItemForPublication(
+                                item,
+                                () -> {
+                                    var reserved = prefill.reserveUnqueuedRoute(pin, item, 30_000L);
+                                    assertEquals(
+                                            PrefillState.CapacityStatus.ACQUIRED,
+                                            reserved.status());
+                                    routeReservation.set(reserved.reservation());
+                                    return true;
+                                }));
             }
             DeliveryClaim claim;
             try (var routeCommit = prefill.tryBeginRouteCommitAdmission()) {
                 assertNotNull(routeCommit);
-                java.util.function.BooleanSupplier commitPrefill = () -> {
-                    try (var handoff = routeCommit.commit(List.of(item), List.of(routeReservation.get()))) {
-                        return true;
-                    }
-                };
-                claim = waiting == ConfirmationWait.UNCERTAIN_REPLY
-                        ? RequestLifecycleTestSupport.claimBatchWithoutPrediction(requests, item, 1L, commitPrefill)
-                        : RequestLifecycleTestSupport.claimRouteWithoutPrediction(requests, item, commitPrefill);
+                java.util.function.BooleanSupplier commitPrefill =
+                        () -> {
+                            try (var handoff =
+                                    routeCommit.commit(
+                                            List.of(item), List.of(routeReservation.get()))) {
+                                return true;
+                            }
+                        };
+                claim =
+                        waiting == ConfirmationWait.UNCERTAIN_REPLY
+                                ? RequestLifecycleTestSupport.claimBatchWithoutPrediction(
+                                        requests, item, 1L, commitPrefill)
+                                : RequestLifecycleTestSupport.claimRouteWithoutPrediction(
+                                        requests, item, commitPrefill);
                 assertNotNull(claim);
-                requests.setDeliveryPrediction(claim, new WorkSnapshot(System.currentTimeMillis(), List.of(), List.of(), 0L), 30_000L);
+                requests.setDeliveryPrediction(
+                        claim,
+                        new WorkSnapshot(System.currentTimeMillis(), List.of(), List.of(), 0L),
+                        30_000L);
             }
             if (waiting == ConfirmationWait.UNCERTAIN_REPLY) {
-                claim.complete(DeliveryResult.uncertain(new IllegalStateException("reply was lost")));
+                claim.complete(
+                        DeliveryResult.uncertain(new IllegalStateException("reply was lost")));
             }
             assertEquals(1, requests.trackedRequestCount());
             assertFalse(future.isDone());
@@ -139,8 +173,10 @@ class RequestConfirmationTimeoutTest {
             assertEquals(1, decode.routingView().engineCapacityUsed());
 
             if (waiting != ConfirmationWait.AUTOMATIC_TIMER) {
-                requests.expireInactiveRequest(slot,
-                        RequestLifecycleTestSupport.<Long>inspect(slot, "inactivityExpiresAtMsLocked"));
+                requests.expireInactiveRequest(
+                        slot,
+                        RequestLifecycleTestSupport.<Long>inspect(
+                                slot, "inactivityExpiresAtMsLocked"));
             }
 
             // AUTOMATIC_TIMER relies only on ExpirationTimer; no manual expiry entry point runs.
@@ -160,13 +196,20 @@ class RequestConfirmationTimeoutTest {
                 var next = decode.reserve(pin, "102", 16L, 32L, 50, capacity);
                 assertNotNull(next);
                 var acquired = decode.acquireDispatchPermit(next, capacity);
-                assertEquals(DecodeEndpoint.EngineDispatchPermitAcquireStatus.ACQUIRED, acquired.status());
+                assertEquals(
+                        DecodeEndpoint.EngineDispatchPermitAcquireStatus.ACQUIRED,
+                        acquired.status());
                 assertTrue(acquired.permit().release());
                 decode.release(next, DecodeEndpoint.ReleaseReason.LOCAL_ROLLBACK);
             }
-            requests.processPrefillStatus(prefill, RoleType.PREFILL, PrefillState.WorkerStatusFact.active(item.execution()));
-            requests.processDecodeStatus(decode, DecodeEndpoint.WorkerStatusFact.active(reservation));
-            assertEquals(RequestState.Phase.TIMED_OUT, requests.getRequestState(REQUEST_ID, 0L).state());
+            requests.processPrefillStatus(
+                    prefill,
+                    RoleType.PREFILL,
+                    PrefillState.WorkerStatusFact.active(item.execution()));
+            requests.processDecodeStatus(
+                    decode, DecodeEndpoint.WorkerStatusFact.active(reservation));
+            assertEquals(
+                    RequestState.Phase.TIMED_OUT, requests.getRequestState(REQUEST_ID, 0L).state());
             assertEquals(0, requests.liveRequestCount());
             assertEquals(0L, prefill.observedRequestCount());
             assertEquals(0, decode.routingView().engineCapacityUsed());
@@ -188,7 +231,8 @@ class RequestConfirmationTimeoutTest {
     }
 
     private static WorkerStatus worker(RoleType role, String ip) {
-        return WorkerStatusTestFixtures.readyForScheduling(WorkerStatus.createDiscovered(role, "g1", ip, 8080, 8081, "test"));
+        return WorkerStatusTestFixtures.readyForScheduling(
+                WorkerStatus.createDiscovered(role, "g1", ip, 8080, 8081, "test"));
     }
 
     private static WorkerStatusResponse status(RoleType role) {
@@ -210,8 +254,12 @@ class RequestConfirmationTimeoutTest {
         Runnable projection;
         worker.lock.lock();
         try {
-            projection = endpoint.applyPreparedStatus(worker,
-                    WorkerStatusTestFixtures.prepare(worker, WorkerStatusTestFixtures.observation(worker, response)));
+            projection =
+                    endpoint.applyPreparedStatus(
+                            worker,
+                            WorkerStatusTestFixtures.prepare(
+                                    worker,
+                                    WorkerStatusTestFixtures.observation(worker, response)));
         } finally {
             worker.lock.unlock();
         }

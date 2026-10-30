@@ -1,10 +1,8 @@
 package org.flexlb.balance.scheduler;
 
-import org.flexlb.balance.endpoint.DecodeEndpoint;
-
-import org.flexlb.balance.preemption.VictimTerminal;
 import org.flexlb.balance.delivery.DeliveryResult;
-
+import org.flexlb.balance.endpoint.DecodeEndpoint;
+import org.flexlb.balance.preemption.VictimTerminal;
 import org.flexlb.service.monitor.RequestSchedulerReporter;
 import org.flexlb.util.Logger;
 
@@ -31,24 +29,28 @@ final class RequestTerminalCleanup {
         }
     }
 
-    RequestCompletionPublisher.PublicationPermit finishTerminal(
-            TerminalAction action) {
+    RequestCompletionPublisher.PublicationPermit finishTerminal(TerminalAction action) {
         RequestSlot entry = action.slot();
         entry.requireCleanupOwner(action);
         Throwable cleanupFailure = null;
-        cleanupFailure = runStep(
-                cleanupFailure,
-                () -> action.terminalResources().release(expirationTimer));
+        cleanupFailure =
+                runStep(cleanupFailure, () -> action.terminalResources().release(expirationTimer));
         cleanupFailure = runStep(cleanupFailure, () -> releaseEndpoints(action));
-        cleanupFailure = runStep(
-                cleanupFailure,
-                action.preemption() == null
-                        ? null : () -> action.preemption().signalTerminal(new VictimTerminal(entry.requestId())));
+        cleanupFailure =
+                runStep(
+                        cleanupFailure,
+                        action.preemption() == null
+                                ? null
+                                : () ->
+                                        action.preemption()
+                                                .signalTerminal(
+                                                        new VictimTerminal(entry.requestId())));
 
         TerminationResult result = entry.commitTerminalRecord(action);
-        Throwable terminalFailure = result.transitionFailure() == null
-                ? cleanupFailure
-                : appendFailure(cleanupFailure, result.transitionFailure());
+        Throwable terminalFailure =
+                result.transitionFailure() == null
+                        ? cleanupFailure
+                        : appendFailure(cleanupFailure, result.transitionFailure());
         if (terminalFailure != null) {
             reporter.reportLifecycleFailure("terminal_cleanup");
             Logger.error(
@@ -56,45 +58,76 @@ final class RequestTerminalCleanup {
                     entry.requestId(),
                     terminalFailure);
         }
-        return result.terminal() == null
-                ? null : result.publication();
+        return result.terminal() == null ? null : result.publication();
     }
 
     private void releaseEndpoints(TerminalAction action) {
-        if (action.endpointsSettled()) { return; }
+        if (action.endpointsSettled()) {
+            return;
+        }
         DeliveryClaimKind delivery = action.deliveryKind();
         RequestExecution exact = action.item();
-        if (exact == null) { return; }
+        if (exact == null) {
+            return;
+        }
         DeferredTerminal event = action.event();
         Throwable failure = null;
-        if (delivery == DeliveryClaimKind.NONE && exact.prefillEp() != null && action.queuedItem() != null) {
-            failure = runStep(failure,
-                    () -> exact.prefillEp().removeQueued(action.queuedItem(), "TERMINAL_RELEASE"));
+        if (delivery == DeliveryClaimKind.NONE
+                && exact.prefillEp() != null
+                && action.queuedItem() != null) {
+            failure =
+                    runStep(
+                            failure,
+                            () ->
+                                    exact.prefillEp()
+                                            .removeQueued(action.queuedItem(), "TERMINAL_RELEASE"));
         }
         if (event != null && event.kind() == DeferredTerminal.Kind.INACTIVITY_EXPIRED) {
             // Expiry ends exact local tracking even when delivery is uncertain or Engine-owned.
-            failure = runStep(failure,
-                    exact.decodeEp() == null ? null
-                            : () -> exact.decodeEp().release(exact.decodeReservation(), DecodeEndpoint.ReleaseReason.EXPIRED));
-            failure = runStep(failure,
-                    exact.prefillEp() == null ? null : () -> exact.prefillEp().expireCommittedItem(exact));
+            failure =
+                    runStep(
+                            failure,
+                            exact.decodeEp() == null
+                                    ? null
+                                    : () ->
+                                            exact.decodeEp()
+                                                    .release(
+                                                            exact.decodeReservation(),
+                                                            DecodeEndpoint.ReleaseReason.EXPIRED));
+            failure =
+                    runStep(
+                            failure,
+                            exact.prefillEp() == null
+                                    ? null
+                                    : () -> exact.prefillEp().expireCommittedItem(exact));
         } else {
             // A projection may lag endpoint ownership. Never roll back an Engine/protocol owner.
-            failure = runStep(failure,
-                    exact.decodeEp() == null ? null
-                            : () -> exact.decodeEp().release(
-                                    exact.decodeReservation(),
-                                    DecodeEndpoint.ReleaseReason.COUNTERPART_FINISHED));
-            boolean releasePrefill = event != null && switch (event.kind()) {
-                case DECODE_GENERATION_RETIRED, PRIORITY -> true;
-                case WORKER -> event.workerSource() != WorkerTerminalSource.PREFILL_ENDPOINT
-                        && delivery != DeliveryClaimKind.BATCH_ENQUEUE;
-                default -> delivery != DeliveryClaimKind.BATCH_ENQUEUE;
-            };
-            if (event == null) { releasePrefill = delivery != DeliveryClaimKind.BATCH_ENQUEUE; }
+            failure =
+                    runStep(
+                            failure,
+                            exact.decodeEp() == null
+                                    ? null
+                                    : () ->
+                                            exact.decodeEp()
+                                                    .release(
+                                                            exact.decodeReservation(),
+                                                            DecodeEndpoint.ReleaseReason
+                                                                    .COUNTERPART_FINISHED));
+            boolean releasePrefill =
+                    event != null
+                            && switch (event.kind()) {
+                                case DECODE_GENERATION_RETIRED, PRIORITY -> true;
+                                case WORKER ->
+                                        event.workerSource()
+                                                        != WorkerTerminalSource.PREFILL_ENDPOINT
+                                                && delivery != DeliveryClaimKind.BATCH_ENQUEUE;
+                                default -> delivery != DeliveryClaimKind.BATCH_ENQUEUE;
+                            };
+            if (event == null) {
+                releasePrefill = delivery != DeliveryClaimKind.BATCH_ENQUEUE;
+            }
             if (releasePrefill && exact.prefillEp() != null) {
-                failure = runStep(failure,
-                        () -> exact.prefillEp().releaseCommittedItem(exact));
+                failure = runStep(failure, () -> exact.prefillEp().releaseCommittedItem(exact));
             }
         }
         rethrowCleanup(failure);
@@ -103,9 +136,12 @@ final class RequestTerminalCleanup {
     // ── 派发失败：分别结算 Prefill 与 Decode ──
 
     void settlePrefill(RequestExecution exact, ScheduledRequest queuedInput, boolean expired) {
-        if (exact.prefillEp() == null) { return; }
+        if (exact.prefillEp() == null) {
+            return;
+        }
         if (queuedInput != null) {
-            exact.prefillEp().removeQueued(queuedInput, expired ? "REQUEST_INACTIVE" : "DELIVERY_FAILED");
+            exact.prefillEp()
+                    .removeQueued(queuedInput, expired ? "REQUEST_INACTIVE" : "DELIVERY_FAILED");
         }
         if (expired) {
             exact.prefillEp().expireCommittedItem(exact);
@@ -115,9 +151,12 @@ final class RequestTerminalCleanup {
     }
 
     boolean settleDecode(RequestExecution exact, DeliveryResult.Status source, boolean expired) {
-        if (exact.decodeEp() == null || exact.decodeReservation() == null) { return true; }
+        if (exact.decodeEp() == null || exact.decodeReservation() == null) {
+            return true;
+        }
         if (expired) {
-            exact.decodeEp().release(exact.decodeReservation(), DecodeEndpoint.ReleaseReason.EXPIRED);
+            exact.decodeEp()
+                    .release(exact.decodeReservation(), DecodeEndpoint.ReleaseReason.EXPIRED);
             return true;
         }
         return exact.decodeEp().settleFailedRequest(exact.decodeReservation(), source);
@@ -155,10 +194,7 @@ final class RequestTerminalCleanup {
             throw error;
         }
         if (failure != null) {
-            throw new IllegalStateException(
-                    "request slot cleanup failed", failure);
+            throw new IllegalStateException("request slot cleanup failed", failure);
         }
     }
-
-
 }

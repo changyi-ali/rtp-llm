@@ -60,12 +60,16 @@ public class WorkerStatus {
 
     public void recordVitLoad(PollLease lease, Long inflightInputs) {
         synchronized (workerHealth) {
-            if (lease == null || statusPollLease.get() != lease
-                    || workerHealth.retiring || workerHealth.unavailableReason != null) {
+            if (lease == null
+                    || statusPollLease.get() != lease
+                    || workerHealth.retiring
+                    || workerHealth.unavailableReason != null) {
                 return;
             }
-            vitLoad = inflightInputs == null || inflightInputs < 0 ? null
-                    : new VitLoad(inflightInputs, System.nanoTime());
+            vitLoad =
+                    inflightInputs == null || inflightInputs < 0
+                            ? null
+                            : new VitLoad(inflightInputs, System.nanoTime());
         }
     }
 
@@ -111,7 +115,7 @@ public class WorkerStatus {
         @JsonIgnore
         public boolean isPriorityCancelOverlayOnly() {
             return (priorityPreemptionProgress == PriorityPreemptionProgress.CANCELING
-                    || priorityPreemptionProgress == PriorityPreemptionProgress.CANCELED)
+                            || priorityPreemptionProgress == PriorityPreemptionProgress.CANCELED)
                     && phase == TaskPhase.PENDING;
         }
     }
@@ -263,16 +267,10 @@ public class WorkerStatus {
      * Keeping them in one immutable value prevents readers from observing a
      * committed status version with an older finished-task cursor.
      */
-    public record AppliedStatusCursor(
-            long statusVersion,
-            long latestFinishedTaskVersion) {
-    }
+    public record AppliedStatusCursor(long statusVersion, long latestFinishedTaskVersion) {}
 
     /** The single public value for one successfully committed status round. */
-    public record CommittedWorkerStatus(
-            EngineObservation fields,
-            AppliedStatusCursor cursor) {
-    }
+    public record CommittedWorkerStatus(EngineObservation fields, AppliedStatusCursor cursor) {}
 
     /**
      * Worker health and successful-poll timing, independent of local status application.
@@ -293,17 +291,13 @@ public class WorkerStatus {
             if (lastSuccessfulPollUs < 0L
                     || successfulPollIntervalUs < 0L
                     || consecutiveWorkerFailures < 0L) {
-                throw new IllegalArgumentException(
-                        "poll health counters must be non-negative");
+                throw new IllegalArgumentException("poll health counters must be non-negative");
             }
         }
     }
 
     public record CacheIndexSnapshot(
-            CacheStatus cacheStatus,
-            boolean indexInitialized,
-            long indexedVersion) {
-    }
+            CacheStatus cacheStatus, boolean indexInitialized, long indexedVersion) {}
 
     /** One deeply frozen RPC observation shared by every status reducer. */
     public static final class StatusObservation {
@@ -409,6 +403,7 @@ public class WorkerStatus {
     /** Cache polling is independent from worker-status polling. */
     private final AtomicReference<CacheIndexSnapshot> cacheIndexSnapshot =
             new AtomicReference<>(new CacheIndexSnapshot(null, false, -1L));
+
     private final AtomicLong cacheLastUpdateTime = new AtomicLong(-1L);
 
     private static final long MAX_CONSECUTIVE_WORKER_FAILURES = 3L;
@@ -416,20 +411,25 @@ public class WorkerStatus {
 
     /** Only short state transitions use this monitor; never hold it while waiting for Worker locks. */
     private final class WorkerHealth {
-        private volatile PollHealth health =
-                new PollHealth(0L, 0L, 0L, false, false);
+        private volatile PollHealth health = new PollHealth(0L, 0L, 0L, false, false);
         private volatile RetirementReason unavailableReason;
         private volatile boolean retiring;
 
         private synchronized boolean beginRetirement() {
-            if (retiring) { return false; }
+            if (retiring) {
+                return false;
+            }
             retiring = true;
             return true;
         }
 
-        private synchronized boolean rpcResult(PollLease lease, boolean valid, boolean alive, Throwable failure) {
-            if (lease == null || statusPollLease.get() != lease || lease.statusRpcResultRecorded
-                    || retiring || unavailableReason != null) {
+        private synchronized boolean rpcResult(
+                PollLease lease, boolean valid, boolean alive, Throwable failure) {
+            if (lease == null
+                    || statusPollLease.get() != lease
+                    || lease.statusRpcResultRecorded
+                    || retiring
+                    || unavailableReason != null) {
                 return false;
             }
             lease.statusRpcResultRecorded = true;
@@ -483,7 +483,8 @@ public class WorkerStatus {
 
     /** Unknown or local transport failures preserve a worker's established health. */
     public boolean isAvailableForScheduling() {
-        return !workerHealth.retiring && workerHealth.unavailableReason == null
+        return !workerHealth.retiring
+                && workerHealth.unavailableReason == null
                 && workerHealth.health.healthy();
     }
 
@@ -491,17 +492,16 @@ public class WorkerStatus {
      * Record a status RPC result without taking the Worker lock or waiting for local application.
      * Each current lease contributes at most once; only confirmed worker failures affect health.
      */
-    public void recordStatusRpcResult(PollLease lease, boolean validResponse, boolean alive, Throwable failure) {
+    public void recordStatusRpcResult(
+            PollLease lease, boolean validResponse, boolean alive, Throwable failure) {
         if (workerHealth.rpcResult(lease, validResponse, alive, failure)) {
             lease.pollTrace().record(Stage.STATUS_HEALTH_UPDATED);
         }
     }
 
-    private final AtomicReference<PollLease> statusPollLease =
-            new AtomicReference<>();
+    private final AtomicReference<PollLease> statusPollLease = new AtomicReference<>();
     private final AtomicReference<PollLease> statusApplication = new AtomicReference<>();
-    private final AtomicReference<PollLease> cachePollLease =
-            new AtomicReference<>();
+    private final AtomicReference<PollLease> cachePollLease = new AtomicReference<>();
 
     private enum PollKind {
         STATUS,
@@ -518,13 +518,15 @@ public class WorkerStatus {
         private final PollKind kind;
         private final AtomicReference<PollLease> slot;
         private final EndpointTrace.Poll pollTrace;
+
         /** Guarded by owner.workerHealth; one RPC result cannot count as several failures. */
         private boolean statusRpcResultRecorded;
 
         private PollLease(
                 WorkerStatus owner,
                 PollKind kind,
-                AtomicReference<PollLease> slot, long syncCycleId) {
+                AtomicReference<PollLease> slot,
+                long syncCycleId) {
             this.owner = owner;
             this.kind = kind;
             this.slot = slot;
@@ -543,18 +545,17 @@ public class WorkerStatus {
         }
     }
 
-    private WorkerStatus(
-            TopologySnapshot initialTopology,
-            EngineObservation initialStatus) {
+    private WorkerStatus(TopologySnapshot initialTopology, EngineObservation initialStatus) {
         topology = new AtomicReference<>(initialTopology);
         workerIdentity =
                 new WorkerIdentity(
                         initialTopology.ip(),
                         initialTopology.port(),
                         initialTopology.engineIndex());
-        committedStatus = new AtomicReference<>(new CommittedWorkerStatus(
-                initialStatus,
-                new AppliedStatusCursor(-1L, -1L)));
+        committedStatus =
+                new AtomicReference<>(
+                        new CommittedWorkerStatus(
+                                initialStatus, new AppliedStatusCursor(-1L, -1L)));
     }
 
     /** Create one fully initialized service-discovery generation. */
@@ -587,8 +588,7 @@ public class WorkerStatus {
         Objects.requireNonNull(role, "role");
         Objects.requireNonNull(ip, "ip");
         if (port <= 0 || grpcPort <= 0) {
-            throw new IllegalArgumentException(
-                    "worker ports must be positive");
+            throw new IllegalArgumentException("worker ports must be positive");
         }
         if (engineIndex < 0 || multiEngineNum <= 0 || engineIndex >= multiEngineNum) {
             throw new IllegalArgumentException("invalid logical worker index");
@@ -604,20 +604,7 @@ public class WorkerStatus {
                         engineIndex,
                         multiEngineNum),
                 new EngineObservation(
-                        role,
-                        null,
-                        0L,
-                        0L,
-                        Map.of(),
-                        0.0,
-                        0L,
-                        0L,
-                        0L,
-                        0L,
-                        0L,
-                        0L,
-                        0L,
-                        0L));
+                        role, null, 0L, 0L, Map.of(), 0.0, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L));
     }
 
     @JsonIgnore
@@ -655,7 +642,8 @@ public class WorkerStatus {
                 statusVersion,
                 latestFinishedVersion,
                 finishedTasks == null || finishedTasks.isEmpty()
-                        ? Map.of() : Map.copyOf(finishedTasks));
+                        ? Map.of()
+                        : Map.copyOf(finishedTasks));
     }
 
     /** Carry poll correlation through the role reducer to the actual commit boundary. */
@@ -670,17 +658,20 @@ public class WorkerStatus {
         }
         CommittedWorkerStatus current = committedStatus.get();
         Long responseVersion = observation.statusVersion();
-        if (responseVersion == null || responseVersion <= 0L
+        if (responseVersion == null
+                || responseVersion <= 0L
                 || responseVersion <= current.cursor().statusVersion()) {
             throw new IllegalArgumentException(
                     "new status version must strictly advance committed version: committed="
                             + current.cursor().statusVersion()
-                            + ", response=" + responseVersion);
+                            + ", response="
+                            + responseVersion);
         }
-        AppliedStatusCursor cursor = new AppliedStatusCursor(
-                responseVersion,
-                mergedFinishedVersion(current.cursor(),
-                        observation.latestFinishedVersion()));
+        AppliedStatusCursor cursor =
+                new AppliedStatusCursor(
+                        responseVersion,
+                        mergedFinishedVersion(
+                                current.cursor(), observation.latestFinishedVersion()));
         return new PreparedStatus(
                 current,
                 observation,
@@ -699,16 +690,16 @@ public class WorkerStatus {
                     "prepared status belongs to another worker generation");
         }
         Long responseVersion = prepared.observation.statusVersion();
-        if (responseVersion == null || responseVersion <= 0L
-                || responseVersion
-                        <= prepared.baseCommitted.cursor().statusVersion()) {
+        if (responseVersion == null
+                || responseVersion <= 0L
+                || responseVersion <= prepared.baseCommitted.cursor().statusVersion()) {
             throw new IllegalStateException(
                     "invalid prepared status version: committed="
                             + prepared.baseCommitted.cursor().statusVersion()
-                            + ", response=" + responseVersion);
+                            + ", response="
+                            + responseVersion);
         }
-        if (!committedStatus.compareAndSet(
-                prepared.baseCommitted, prepared.nextCommitted)) {
+        if (!committedStatus.compareAndSet(prepared.baseCommitted, prepared.nextCommitted)) {
             throw new IllegalStateException(
                     "prepared status is stale or has already been published");
         }
@@ -717,8 +708,7 @@ public class WorkerStatus {
 
     public void requireGenerationLock() {
         if (!lock.isHeldByCurrentThread()) {
-            throw new IllegalStateException(
-                    "status transaction requires generation lock");
+            throw new IllegalStateException("status transaction requires generation lock");
         }
     }
 
@@ -726,8 +716,7 @@ public class WorkerStatus {
     public void requireActiveGeneration() {
         requireGenerationLock();
         if (!isActiveGeneration()) {
-            throw new IllegalStateException(
-                    "WorkerStatus generation is retiring: " + generationId);
+            throw new IllegalStateException("WorkerStatus generation is retiring: " + generationId);
         }
     }
 
@@ -740,7 +729,9 @@ public class WorkerStatus {
      */
     public boolean beginRetirementAfterEndpointGateClosed() {
         requireGenerationLock();
-        if (!workerHealth.beginRetirement()) { return false; }
+        if (!workerHealth.beginRetirement()) {
+            return false;
+        }
         trace.record(Stage.GENERATION_RETIRING);
         return true;
     }
@@ -751,12 +742,10 @@ public class WorkerStatus {
     }
 
     private static long mergedFinishedVersion(
-            AppliedStatusCursor current,
-            Long responseFinishedVersion) {
+            AppliedStatusCursor current, Long responseFinishedVersion) {
         return responseFinishedVersion == null
                 ? current.latestFinishedTaskVersion()
-                : Math.max(current.latestFinishedTaskVersion(),
-                        responseFinishedVersion);
+                : Math.max(current.latestFinishedTaskVersion(), responseFinishedVersion);
     }
 
     /** Atomically refresh discovery-owned placement labels for this generation. */
@@ -835,20 +824,20 @@ public class WorkerStatus {
     public void publishCacheStatus(CacheStatus cacheStatus) {
         requireCacheMutationLock();
         CacheStatus next = Objects.requireNonNull(cacheStatus, "cacheStatus");
-        cacheIndexSnapshot.updateAndGet(current -> new CacheIndexSnapshot(
-                next, current.indexInitialized(), current.indexedVersion()));
+        cacheIndexSnapshot.updateAndGet(
+                current ->
+                        new CacheIndexSnapshot(
+                                next, current.indexInitialized(), current.indexedVersion()));
     }
 
     public void publishCacheIndexedVersion(long version) {
         requireCacheMutationLock();
         CacheIndexSnapshot current = cacheIndexSnapshot.get();
-        if (current.cacheStatus() == null
-                || current.cacheStatus().getVersion() != version) {
+        if (current.cacheStatus() == null || current.cacheStatus().getVersion() != version) {
             throw new IllegalStateException(
                     "indexed cache version must match current cache status");
         }
-        cacheIndexSnapshot.set(new CacheIndexSnapshot(
-                current.cacheStatus(), true, version));
+        cacheIndexSnapshot.set(new CacheIndexSnapshot(current.cacheStatus(), true, version));
     }
 
     public long recordSuccessfulCachePoll() {
@@ -911,7 +900,8 @@ public class WorkerStatus {
     public boolean tryBeginStatusApplication(PollLease lease) {
         synchronized (workerHealth) {
             requireStatusPollLease(lease);
-            return !workerHealth.retiring && workerHealth.unavailableReason == null
+            return !workerHealth.retiring
+                    && workerHealth.unavailableReason == null
                     && statusApplication.compareAndSet(null, lease);
         }
     }
@@ -938,12 +928,17 @@ public class WorkerStatus {
         requirePollLease(lease, PollKind.CACHE, cachePollLease);
     }
 
-    private PollLease tryBeginPoll(PollKind kind, AtomicReference<PollLease> slot,
-                                   long syncCycleId) {
+    private PollLease tryBeginPoll(
+            PollKind kind, AtomicReference<PollLease> slot, long syncCycleId) {
         synchronized (workerHealth) {
-            if (workerHealth.retiring || workerHealth.unavailableReason != null) { return null; }
+            if (workerHealth.retiring || workerHealth.unavailableReason != null) {
+                return null;
+            }
             PollLease active = slot.get();
-            if (active != null) { active.pollTrace.skippedBusy(); return null; }
+            if (active != null) {
+                active.pollTrace.skippedBusy();
+                return null;
+            }
             // Only the admitted poll may publish a new diagnostic snapshot.
             PollLease lease = new PollLease(this, kind, slot, syncCycleId);
             slot.set(lease);
@@ -958,9 +953,7 @@ public class WorkerStatus {
     }
 
     private void requirePollLease(
-            PollLease lease,
-            PollKind expectedKind,
-            AtomicReference<PollLease> slot) {
+            PollLease lease, PollKind expectedKind, AtomicReference<PollLease> slot) {
         if (lease == null
                 || lease.owner != this
                 || lease.kind != expectedKind
@@ -1004,12 +997,17 @@ public class WorkerStatus {
 
     @Override
     public String toString() {
-        return "WorkerStatus{" +
-                "generationId=" + generationId +
-                ", retiring=" + !isActiveGeneration() +
-                ", topology=" + topology.get() +
-                ", committedStatus=" + committedStatus.get() +
-                ", pollHealth=" + pollHealth() +
-                '}';
+        return "WorkerStatus{"
+                + "generationId="
+                + generationId
+                + ", retiring="
+                + !isActiveGeneration()
+                + ", topology="
+                + topology.get()
+                + ", committedStatus="
+                + committedStatus.get()
+                + ", pollHealth="
+                + pollHealth()
+                + '}';
     }
 }

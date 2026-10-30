@@ -1,6 +1,5 @@
 package org.flexlb.sync.worker;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import org.flexlb.dao.master.WorkerStatus;
 import org.flexlb.dao.master.WorkerStatus.StatusObservation;
 import org.flexlb.dao.route.RoleType;
@@ -17,11 +16,12 @@ class WorkerStatusResponseTest {
 
     @Test
     void converterCopiesEngineBatchLimits() {
-        EngineRpcService.WorkerStatusPB proto = EngineRpcService.WorkerStatusPB.newBuilder()
-                .setRoleType(EngineRpcService.RoleTypePB.ROLE_TYPE_PREFILL)
-                .setMaxSeqLen(131072L)
-                .setMaxBatchTokensSize(262144L)
-                .build();
+        EngineRpcService.WorkerStatusPB proto =
+                EngineRpcService.WorkerStatusPB.newBuilder()
+                        .setRoleType(EngineRpcService.RoleTypePB.ROLE_TYPE_PREFILL)
+                        .setMaxSeqLen(131072L)
+                        .setMaxBatchTokensSize(262144L)
+                        .build();
 
         StatusObservation response = convert(proto);
 
@@ -77,12 +77,12 @@ class WorkerStatusResponseTest {
 
     @Test
     void converterRejectsConflictingDualWorkerRole() {
-        EngineRpcService.WorkerStatusPB roleConflict = EngineRpcService.WorkerStatusPB.newBuilder()
-                .setRole("PREFILL")
-                .setRoleType(EngineRpcService.RoleTypePB.ROLE_TYPE_DECODE)
-                .build();
-        assertThrows(IllegalArgumentException.class,
-                () -> convert(roleConflict));
+        EngineRpcService.WorkerStatusPB roleConflict =
+                EngineRpcService.WorkerStatusPB.newBuilder()
+                        .setRole("PREFILL")
+                        .setRoleType(EngineRpcService.RoleTypePB.ROLE_TYPE_DECODE)
+                        .build();
+        assertThrows(IllegalArgumentException.class, () -> convert(roleConflict));
     }
 
     @Test
@@ -161,21 +161,15 @@ class WorkerStatusResponseTest {
 
         Assertions.assertEquals(RoleType.PREFILL, response.role());
         Assertions.assertNotNull(converted);
-        Assertions.assertEquals(PriorityPreemptionProgress.CANCELED,
-                converted.priorityPreemptionProgress());
+        Assertions.assertEquals(
+                PriorityPreemptionProgress.CANCELED, converted.priorityPreemptionProgress());
         Assertions.assertEquals(8429L, converted.errorCode());
     }
 
-    private static StatusObservation convert(
-            EngineRpcService.WorkerStatusPB response) {
-        WorkerStatus owner = WorkerStatus.createDiscovered(
-                RoleType.PREFILL,
-                "test-group",
-                "127.0.0.1",
-                8080,
-                8081,
-                "test-site");
-        return EngineStatusConverter.convertToStatusObservation(
-                owner, response);
+    private static StatusObservation convert(EngineRpcService.WorkerStatusPB response) {
+        WorkerStatus owner =
+                WorkerStatus.createDiscovered(
+                        RoleType.PREFILL, "test-group", "127.0.0.1", 8080, 8081, "test-site");
+        return EngineStatusConverter.convertToStatusObservation(owner, response);
     }
 }

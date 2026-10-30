@@ -16,8 +16,8 @@ import org.flexlb.dao.master.CacheStatus;
 import org.flexlb.dao.master.EndpointTrace;
 import org.flexlb.dao.master.WorkerStatus;
 import org.flexlb.dao.route.RoleType;
-import org.flexlb.engine.grpc.client.EngineGrpcClient;
 import org.flexlb.engine.grpc.GrpcFailure;
+import org.flexlb.engine.grpc.client.EngineGrpcClient;
 import org.flexlb.enums.BalanceStatusEnum;
 import org.flexlb.enums.FlexMetricType;
 import org.flexlb.enums.FlexPriorityType;
@@ -128,22 +128,23 @@ public class EngineHealthReporter {
     private final Map<String, EventLoopGroup> eventLoopGroupMap;
 
     @Autowired
-    public EngineHealthReporter(FlexMonitor monitor,
-                                CacheMetricsReporter cacheMetricsReporter,
-                                EngineGrpcClient engineGrpcClient,
-                                LoopResources serverLoopResources,
-                                WorkerDirectory workerDirectory,
-                                StatusFailureReporter statusFailureReporter) {
+    public EngineHealthReporter(
+            FlexMonitor monitor,
+            CacheMetricsReporter cacheMetricsReporter,
+            EngineGrpcClient engineGrpcClient,
+            LoopResources serverLoopResources,
+            WorkerDirectory workerDirectory,
+            StatusFailureReporter statusFailureReporter) {
         this.monitor = monitor;
         this.cacheMetricsReporter = cacheMetricsReporter;
         this.engineGrpcClient = engineGrpcClient;
         this.workerDirectory = workerDirectory;
         this.statusFailureReporter = statusFailureReporter;
-        this.eventLoopGroupMap = Map.of(
-                "serverWorker", serverLoopResources.onServer(true),
-                "serverSelector", serverLoopResources.onServerSelect(true),
-                "gRpcEventLoopGroup", engineGrpcClient.getEventLoopGroup()
-        );
+        this.eventLoopGroupMap =
+                Map.of(
+                        "serverWorker", serverLoopResources.onServer(true),
+                        "serverSelector", serverLoopResources.onServerSelect(true),
+                        "gRpcEventLoopGroup", engineGrpcClient.getEventLoopGroup());
     }
 
     @PostConstruct
@@ -194,7 +195,10 @@ public class EngineHealthReporter {
         this.monitor.register(
                 ENGINE_RUNNING_TASK_INFO_SIZE, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
         this.monitor.register(CACHE_KEY_SIZE, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
-        this.monitor.register(ENGINE_BALANCING_EVENT_LOOP_GROUP_INFO, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
+        this.monitor.register(
+                ENGINE_BALANCING_EVENT_LOOP_GROUP_INFO,
+                FlexMetricType.GAUGE,
+                FlexPriorityType.PRECISE);
 
         this.monitor.register(ENGINE_BALANCING_MASTER_ALL_QPS, FlexMetricType.QPS);
         this.monitor.register(
@@ -208,11 +212,12 @@ public class EngineHealthReporter {
                 FlexMetricType.QPS,
                 FlexPriorityType.PRECISE);
 
-        this.monitor.register(ENGINE_RUNNING_QUEUE_TIME, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
-        this.monitor.register(PREFILL_SELECTED_ESTIMATED_TTFT_MS,
-                FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
-        this.monitor.register(PREFILL_SELECTED_EXECUTION_TIME_MS,
-                FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
+        this.monitor.register(
+                ENGINE_RUNNING_QUEUE_TIME, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
+        this.monitor.register(
+                PREFILL_SELECTED_ESTIMATED_TTFT_MS, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
+        this.monitor.register(
+                PREFILL_SELECTED_EXECUTION_TIME_MS, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
 
         this.monitor.register(ZK_MASTER_NODE, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
         this.monitor.register(ZK_MASTER_EVENT, FlexMetricType.GAUGE, FlexPriorityType.PRECISE);
@@ -351,14 +356,19 @@ public class EngineHealthReporter {
                 ENGINE_PREFILL_WORKER_NUMBER,
                 tags,
                 workerDirectory.discoveredCount(RoleType.PREFILL));
-        monitor.report(ENGINE_DECODE_WORKER_NUMBER, tags,
+        monitor.report(
+                ENGINE_DECODE_WORKER_NUMBER,
+                tags,
                 workerDirectory.discoveredCount(RoleType.DECODE));
         monitor.report(
                 ENGINE_ENCODER_WORKER_NUMBER,
                 tags,
                 workerDirectory.discoveredCount(RoleType.ENCODER));
 
-        reportThreadPoolInfo(ENGINE_BALANCING_THREAD_POOL_INFO, "gRpcExecutor", (ThreadPoolExecutor) engineGrpcClient.getExecutor());
+        reportThreadPoolInfo(
+                ENGINE_BALANCING_THREAD_POOL_INFO,
+                "gRpcExecutor",
+                (ThreadPoolExecutor) engineGrpcClient.getExecutor());
 
         eventLoopGroupMap.forEach(this::reportEventLoopGroup);
     }
@@ -443,7 +453,7 @@ public class EngineHealthReporter {
             String reason,
             GrpcFailure.Analysis failure) {
         try {
-            reportStatusCheckerFail(modelName, errorEnum, role);
+            reportStatusCheckerFail(errorEnum, role);
         } finally {
             statusFailureReporter.report(role, "worker_status", stage, reason, failure);
         }
@@ -457,7 +467,7 @@ public class EngineHealthReporter {
             String reason,
             GrpcFailure.Analysis failure) {
         try {
-            reportCacheStatusCheckerFail(modelName, errorEnum, role);
+            reportCacheStatusCheckerFail(errorEnum, role);
         } finally {
             statusFailureReporter.report(role, "cache_status", stage, reason, failure);
         }
@@ -676,13 +686,17 @@ public class EngineHealthReporter {
             return;
         }
 
-        FlexMetricTags metricTags = FlexMetricTags.of(
-                "code", String.valueOf(ctx.getResponse().getCode()));
+        FlexMetricTags metricTags =
+                FlexMetricTags.of("code", String.valueOf(ctx.getResponse().getCode()));
         monitor.report(ENGINE_BALANCING_MASTER_ALL_QPS, metricTags, 1.0);
-        monitor.report(ENGINE_BALANCING_MASTER_ALL_RT, metricTags, System.currentTimeMillis() - ctx.getStartTime());
+        monitor.report(
+                ENGINE_BALANCING_MASTER_ALL_RT,
+                metricTags,
+                System.currentTimeMillis() - ctx.getStartTime());
 
         // Report server selection results aggregated by role and outcome.
-        if (ctx.getResponse() != null && CollectionUtils.isNotEmpty(ctx.getResponse().getServerStatus())) {
+        if (ctx.getResponse() != null
+                && CollectionUtils.isNotEmpty(ctx.getResponse().getServerStatus())) {
             boolean isSuccess = ctx.getResponse().isSuccess();
             int code = ctx.getResponse().getCode();
 
@@ -728,7 +742,8 @@ public class EngineHealthReporter {
         monitor.report(MetricConstant.ZK_MASTER_EVENT_TIME_MS, tags, System.currentTimeMillis());
     }
 
-    public void reportThreadPoolInfo(String metricName, String name, ThreadPoolExecutor engineSyncExecutor) {
+    public void reportThreadPoolInfo(
+            String metricName, String name, ThreadPoolExecutor engineSyncExecutor) {
         if (engineSyncExecutor == null) {
             return;
         }
@@ -737,11 +752,14 @@ public class EngineHealthReporter {
         metricMap.put("threadPool", name);
 
         metricMap.put("type", "executingTaskThreadSize");
-        monitor.report(metricName, FlexMetricTags.of(metricMap), engineSyncExecutor.getActiveCount());
+        monitor.report(
+                metricName, FlexMetricTags.of(metricMap), engineSyncExecutor.getActiveCount());
         metricMap.put("type", "queueSize");
-        monitor.report(metricName, FlexMetricTags.of(metricMap), engineSyncExecutor.getQueue().size());
+        monitor.report(
+                metricName, FlexMetricTags.of(metricMap), engineSyncExecutor.getQueue().size());
         metricMap.put("type", "corePoolSize");
-        monitor.report(metricName, FlexMetricTags.of(metricMap), engineSyncExecutor.getCorePoolSize());
+        monitor.report(
+                metricName, FlexMetricTags.of(metricMap), engineSyncExecutor.getCorePoolSize());
         metricMap.put("type", "currentThreadSizeInPool");
         monitor.report(metricName, FlexMetricTags.of(metricMap), engineSyncExecutor.getPoolSize());
     }
@@ -765,9 +783,15 @@ public class EngineHealthReporter {
         Map<String, String> metricMap = new HashMap<>();
         metricMap.put("name", eventLoopGroupName);
         metricMap.put("type", "active-executor-count");
-        monitor.report(org.flexlb.constant.MetricConstant.ENGINE_BALANCING_EVENT_LOOP_GROUP_INFO, FlexMetricTags.of(metricMap), totalActiveExecutorCount);
+        monitor.report(
+                org.flexlb.constant.MetricConstant.ENGINE_BALANCING_EVENT_LOOP_GROUP_INFO,
+                FlexMetricTags.of(metricMap),
+                totalActiveExecutorCount);
         metricMap.put("type", "pending-task-total-count");
-        monitor.report(org.flexlb.constant.MetricConstant.ENGINE_BALANCING_EVENT_LOOP_GROUP_INFO, FlexMetricTags.of(metricMap), totalPendingTask);
+        monitor.report(
+                org.flexlb.constant.MetricConstant.ENGINE_BALANCING_EVENT_LOOP_GROUP_INFO,
+                FlexMetricTags.of(metricMap),
+                totalPendingTask);
     }
 
     /**
@@ -786,22 +810,21 @@ public class EngineHealthReporter {
     }
 
     /** Report request-level estimates captured when a Prefill worker is selected. */
-    public void reportPrefillSelectedEstimates(RoleType roleType,
-                                               String engineIp,
-                                               String deliveryMode,
-                                               long estimatedTtftMs,
-                                               long executionTimeMs) {
-        FlexMetricTags tags = FlexMetricTags.ofEngine(engineIp,
-                "role", roleType.name(),
-                "delivery_mode", deliveryMode);
+    public void reportPrefillSelectedEstimates(
+            RoleType roleType,
+            String engineIp,
+            String deliveryMode,
+            long estimatedTtftMs,
+            long executionTimeMs) {
+        FlexMetricTags tags =
+                FlexMetricTags.ofEngine(
+                        engineIp, "role", roleType.name(), "delivery_mode", deliveryMode);
         monitor.report(PREFILL_SELECTED_ESTIMATED_TTFT_MS, tags, estimatedTtftMs);
         monitor.report(PREFILL_SELECTED_EXECUTION_TIME_MS, tags, executionTimeMs);
     }
 
     /** Delegate a cache-affinity routing decision to the cache metric reporter. */
-    public void reportCacheAffinityDecision(RoleType roleType,
-                                            String engineIp,
-                                            String decision) {
+    public void reportCacheAffinityDecision(RoleType roleType, String engineIp, String decision) {
         cacheMetricsReporter.reportCacheAffinityDecision(roleType, engineIp, decision);
     }
 
@@ -910,8 +933,7 @@ public class EngineHealthReporter {
         cacheMetricsReporter.reportRoutingSelectedCacheMatchMetrics(roleType, hitTokens);
     }
 
-    public void reportRoutingCandidateMaxCacheMatchMetrics(RoleType roleType,
-                                                           long hitTokens) {
+    public void reportRoutingCandidateMaxCacheMatchMetrics(RoleType roleType, long hitTokens) {
         cacheMetricsReporter.reportRoutingCandidateMaxCacheMatchMetrics(roleType, hitTokens);
     }
 
@@ -933,6 +955,7 @@ public class EngineHealthReporter {
     }
 
     public void reportForwardToMasterResult(String type, String code) {
-        monitor.report(FORWARD_TO_MASTER_RESULT, FlexMetricTags.of("type", type, "code", code), 1.0);
+        monitor.report(
+                FORWARD_TO_MASTER_RESULT, FlexMetricTags.of("type", type, "code", code), 1.0);
     }
 }

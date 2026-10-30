@@ -33,16 +33,20 @@ final class PrefillCandidateSet {
         maximumRoutingCacheMatchTokens = 0L;
     }
 
-    void addCandidate(String address, PrefillEndpoint endpoint,
-                      RouteProjection.CandidateView candidate,
-                      long ownershipVersion) {
+    void addCandidate(
+            String address,
+            PrefillEndpoint endpoint,
+            RouteProjection.CandidateView candidate,
+            long ownershipVersion) {
         addCandidate(address, endpoint, candidate, null, ownershipVersion);
     }
 
-    void addCandidate(String address, PrefillEndpoint endpoint,
-                      RouteProjection.CandidateView candidate,
-                      String admissionBlock,
-                      long ownershipVersion) {
+    void addCandidate(
+            String address,
+            PrefillEndpoint endpoint,
+            RouteProjection.CandidateView candidate,
+            String admissionBlock,
+            long ownershipVersion) {
         if (!candidate.hasPrediction()) {
             throw new IllegalArgumentException("candidate requires a work prediction");
         }
@@ -57,27 +61,53 @@ final class PrefillCandidateSet {
         admissionBlocks[size] = admissionBlock;
         minimumProjectedTtftMs = Math.min(minimumProjectedTtftMs, projectedTtftMs[size]);
         maximumCacheHit = Math.max(maximumCacheHit, cacheHitTokens[size]);
-        maximumRoutingCacheMatchTokens = Math.max(
-                maximumRoutingCacheMatchTokens, routingCacheMatchTokens[size]);
+        maximumRoutingCacheMatchTokens =
+                Math.max(maximumRoutingCacheMatchTokens, routingCacheMatchTokens[size]);
         size++;
     }
 
-    PrefillEndpoint endpoint(int index) { return endpoints[index]; }
-    String endpointAddress(int index) { return endpointAddresses[index]; }
-    long cacheHit(int index) { return cacheHitTokens[index]; }
-    long projectedTtftMs(int index) { return projectedTtftMs[index]; }
-    long prefillMs(int index) { return incomingPrefillMs[index]; }
-    long routingCacheMatchTokens(int index) { return routingCacheMatchTokens[index]; }
-    long ownershipVersion(int index) { return ownershipVersions[index]; }
-    String admissionBlock(int index) { return admissionBlocks[index]; }
-    int size() { return size; }
+    PrefillEndpoint endpoint(int index) {
+        return endpoints[index];
+    }
+
+    String endpointAddress(int index) {
+        return endpointAddresses[index];
+    }
+
+    long cacheHit(int index) {
+        return cacheHitTokens[index];
+    }
+
+    long projectedTtftMs(int index) {
+        return projectedTtftMs[index];
+    }
+
+    long prefillMs(int index) {
+        return incomingPrefillMs[index];
+    }
+
+    long routingCacheMatchTokens(int index) {
+        return routingCacheMatchTokens[index];
+    }
+
+    long ownershipVersion(int index) {
+        return ownershipVersions[index];
+    }
+
+    String admissionBlock(int index) {
+        return admissionBlocks[index];
+    }
+
+    int size() {
+        return size;
+    }
 
     private void ensureCapacity(int expectedCapacity) {
         if (endpoints.length >= expectedCapacity) {
             return;
         }
-        int capacity = Math.max(expectedCapacity,
-                Math.max(INITIAL_CAPACITY, endpoints.length << 1));
+        int capacity =
+                Math.max(expectedCapacity, Math.max(INITIAL_CAPACITY, endpoints.length << 1));
         endpointAddresses = Arrays.copyOf(endpointAddresses, capacity);
         endpoints = Arrays.copyOf(endpoints, capacity);
         projectedTtftMs = Arrays.copyOf(projectedTtftMs, capacity);
@@ -87,5 +117,4 @@ final class PrefillCandidateSet {
         ownershipVersions = Arrays.copyOf(ownershipVersions, capacity);
         admissionBlocks = Arrays.copyOf(admissionBlocks, capacity);
     }
-
 }

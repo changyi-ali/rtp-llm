@@ -38,8 +38,7 @@ public class PrefillEndpoint extends WorkerEndpoint {
     public final class RouteCommitAdmission implements AutoCloseable {
         private EndpointGenerationLifecycle.HandoffPermit generationHandoff;
 
-        private RouteCommitAdmission(
-                EndpointGenerationLifecycle.HandoffPermit generationHandoff) {
+        private RouteCommitAdmission(EndpointGenerationLifecycle.HandoffPermit generationHandoff) {
             this.generationHandoff = generationHandoff;
         }
 
@@ -61,8 +60,7 @@ public class PrefillEndpoint extends WorkerEndpoint {
                         "route commit no longer owns its generation handoff");
             }
             PrefillState.CommittedHandoff committed =
-                    prefillState.commitRouteGroup(
-                            exactItems, exactReservations, exact);
+                    prefillState.commitRouteGroup(exactItems, exactReservations, exact);
             generationHandoff = null;
             return committed;
         }
@@ -78,8 +76,8 @@ public class PrefillEndpoint extends WorkerEndpoint {
     }
 
     private static final Logger logger = LoggerFactory.getLogger("syncLogger");
-    private static final PrefillTimePredictor.Evaluator DEFAULT_BATCH_PREDICTOR = new FormulaPredictor(
-            new RoutingConfig.ExecutionTimeEstimatorConfig().getExpression());
+    private static final PrefillTimePredictor.Evaluator DEFAULT_BATCH_PREDICTOR =
+            new FormulaPredictor(new RoutingConfig.ExecutionTimeEstimatorConfig().getExpression());
     private final PrefillTimePredictor predictor;
     private final long inflightRequestLimit;
     private final WorkerBatcher runtime;
@@ -129,10 +127,9 @@ public class PrefillEndpoint extends WorkerEndpoint {
         super(status);
         FlexlbConfig config = configSupplier.get();
         this.reporter = java.util.Objects.requireNonNull(reporter, "reporter");
-        this.endpointEvents = java.util.Objects.requireNonNull(
-                endpointEvents, "endpointEvents");
-        this.placementAvailability = java.util.Objects.requireNonNull(
-                placementAvailability, "placementAvailability");
+        this.endpointEvents = java.util.Objects.requireNonNull(endpointEvents, "endpointEvents");
+        this.placementAvailability =
+                java.util.Objects.requireNonNull(placementAvailability, "placementAvailability");
         this.predictor = createPredictor(config);
         this.inflightRequestLimit =
                 config.getDispatcher().getType() == DispatcherConfig.Type.NON_BATCH
@@ -164,25 +161,19 @@ public class PrefillEndpoint extends WorkerEndpoint {
     }
 
     /** Publish one exact route after validating its generation pin. */
-    public boolean offerPinned(
-            GenerationPin exactPin,
-            ScheduledRequest exactItem) {
+    public boolean offerPinned(GenerationPin exactPin, ScheduledRequest exactItem) {
         requirePinnedGeneration(exactPin);
         return runtime.offer(exactItem);
     }
 
     /** Publish a role/group-scoped edge after real queue or status progress. */
     public void signalPlacementCapacityChanged() {
-        WorkerStatus.TopologySnapshot topology =
-                getStatus().topologySnapshot();
-        placementAvailability.capacityChanged(
-                getStatus().getRole(), topology.group(), ipPort());
+        WorkerStatus.TopologySnapshot topology = getStatus().topologySnapshot();
+        placementAvailability.capacityChanged(getStatus().getRole(), topology.group(), ipPort());
     }
 
     /** Remove only the supplied canonical ACTIVE queue identity. */
-    public boolean removeQueued(
-            ScheduledRequest exactItem,
-            String reason) {
+    public boolean removeQueued(ScheduledRequest exactItem, String reason) {
         return runtime.removeQueued(exactItem, reason);
     }
 
@@ -208,41 +199,34 @@ public class PrefillEndpoint extends WorkerEndpoint {
         // the exact worker has exited, and are aggregated below.
         Throwable retirementFailure = runtime.stopAndAwait();
         try {
-            PrefillState.Retirement retirement =
-                    prefillState.retireGenerationOwnership();
+            PrefillState.Retirement retirement = prefillState.retireGenerationOwnership();
             if (!retirement.ownedItems().isEmpty()) {
                 try {
-                    endpointEvents.onPrefillGenerationRetired(
-                            this, retirement.ownedItems());
+                    endpointEvents.onPrefillGenerationRetired(this, retirement.ownedItems());
                 } catch (Throwable callbackFailure) {
-                    retirementFailure = appendRetirementFailure(
-                            retirementFailure, callbackFailure);
+                    retirementFailure = appendRetirementFailure(retirementFailure, callbackFailure);
                 }
             }
-            retirementFailure = appendRetirementFailure(
-                    retirementFailure, retirement.invariantFailure());
-            List<PrefillState.BatchCompletion> completions =
-                    retirement.batchCompletions();
+            retirementFailure =
+                    appendRetirementFailure(retirementFailure, retirement.invariantFailure());
+            List<PrefillState.BatchCompletion> completions = retirement.batchCompletions();
             for (int index = 0; index < completions.size(); index++) {
-                PrefillState.BatchCompletion completion =
-                        completions.get(index);
+                PrefillState.BatchCompletion completion = completions.get(index);
                 try {
                     reportBatchCompletion(completion);
                 } catch (Throwable reportingFailure) {
-                    retirementFailure = appendRetirementFailure(
-                            retirementFailure, reportingFailure);
+                    retirementFailure =
+                            appendRetirementFailure(retirementFailure, reportingFailure);
                 }
             }
         } catch (Throwable committedRetirementFailure) {
-            retirementFailure = appendRetirementFailure(
-                    retirementFailure, committedRetirementFailure);
+            retirementFailure =
+                    appendRetirementFailure(retirementFailure, committedRetirementFailure);
         }
         rethrowEndpointRetirementFailure(retirementFailure);
     }
 
-    private static Throwable appendRetirementFailure(
-            Throwable first,
-            Throwable next) {
+    private static Throwable appendRetirementFailure(Throwable first, Throwable next) {
         if (next == null) {
             return first;
         }
@@ -262,14 +246,13 @@ public class PrefillEndpoint extends WorkerEndpoint {
             throw error;
         }
         if (failure != null) {
-            throw new IllegalStateException(
-                    "Prefill endpoint retirement failed", failure);
+            throw new IllegalStateException("Prefill endpoint retirement failed", failure);
         }
     }
 
     private static PrefillTimePredictor createPredictor(FlexlbConfig config) {
-        RoutingConfig.ExecutionTimeEstimatorConfig estimator = config.getRouter()
-                .getRoles().getPrefill().getExecutionTimeEstimator();
+        RoutingConfig.ExecutionTimeEstimatorConfig estimator =
+                config.getRouter().getRoles().getPrefill().getExecutionTimeEstimator();
         if (estimator.getType() == RoutingConfig.EstimatorType.LEARNING) {
             return new LearningPredictor();
         }
@@ -277,25 +260,21 @@ public class PrefillEndpoint extends WorkerEndpoint {
     }
 
     public PrefillState.ReservationResult<PrefillState.BatchReservation> reserveBatch(
-            ScheduledRequest exactHead,
-            long batchId,
-            int maximumInflightBatches) {
+            ScheduledRequest exactHead, long batchId, int maximumInflightBatches) {
         if (!hasAvailableSchedulingStatus()) {
-            return new PrefillState.ReservationResult<>(PrefillState.CapacityStatus.CAPACITY_FULL, null);
+            return new PrefillState.ReservationResult<>(
+                    PrefillState.CapacityStatus.CAPACITY_FULL, null);
         }
-        EndpointGenerationLifecycle.HandoffPermit handoffPermit =
-                tryAcquireGenerationHandoff();
+        EndpointGenerationLifecycle.HandoffPermit handoffPermit = tryAcquireGenerationHandoff();
         if (handoffPermit == null) {
             return new PrefillState.ReservationResult<>(
                     PrefillState.CapacityStatus.ENDPOINT_RETIRED, null);
         }
         PrefillState.ReservationResult<PrefillState.BatchReservation> result;
         try {
-            result = prefillState.reserveBatch(
-                    exactHead,
-                    batchId,
-                    maximumInflightBatches,
-                    handoffPermit);
+            result =
+                    prefillState.reserveBatch(
+                            exactHead, batchId, maximumInflightBatches, handoffPermit);
         } catch (Throwable failure) {
             handoffPermit.close();
             throw failure;
@@ -308,16 +287,15 @@ public class PrefillEndpoint extends WorkerEndpoint {
 
     /** Pin the generation through route preparation, commit, or rollback. */
     public RouteCommitAdmission tryBeginRouteCommitAdmission() {
-        if (!hasAvailableSchedulingStatus()) { return null; }
-        EndpointGenerationLifecycle.HandoffPermit handoffPermit =
-                tryAcquireGenerationHandoff();
-        return handoffPermit == null
-                ? null : new RouteCommitAdmission(handoffPermit);
+        if (!hasAvailableSchedulingStatus()) {
+            return null;
+        }
+        EndpointGenerationLifecycle.HandoffPermit handoffPermit = tryAcquireGenerationHandoff();
+        return handoffPermit == null ? null : new RouteCommitAdmission(handoffPermit);
     }
 
     /** Exact wake source for this generation's batch admission capacity. */
-    public CapacityBoundary.Availability batchAdmissionAvailability(
-            int maximumInflightBatches) {
+    public CapacityBoundary.Availability batchAdmissionAvailability(int maximumInflightBatches) {
         return prefillState.batchAvailability(maximumInflightBatches, getStatus());
     }
 
@@ -382,9 +360,7 @@ public class PrefillEndpoint extends WorkerEndpoint {
     }
 
     @Override
-    public Runnable applyPreparedStatus(
-            WorkerStatus ws,
-            WorkerStatus.PreparedStatus prepared) {
+    public Runnable applyPreparedStatus(WorkerStatus ws, WorkerStatus.PreparedStatus prepared) {
         requireStatusGeneration(ws);
         WorkerStatus.StatusObservation observation = prepared.observation();
         PrefillState.StatusReconciliation reconciliation =
@@ -401,16 +377,13 @@ public class PrefillEndpoint extends WorkerEndpoint {
                         this::beginRetirement);
         reportBatchCompletionsNoFail(reconciliation.batchCompletions());
         rethrowPublicationFailure(reconciliation.publicationFailure());
-        List<PrefillState.WorkerStatusFact> facts =
-                reconciliation.schedulerFacts();
-        return () -> endpointEvents.onPrefillStatus(
-                this, observation.role(), facts);
+        List<PrefillState.WorkerStatusFact> facts = reconciliation.schedulerFacts();
+        return () -> endpointEvents.onPrefillStatus(this, observation.role(), facts);
     }
 
     @Override
     public Runnable initializeFromPreparedStatus(
-            WorkerStatus ws,
-            WorkerStatus.StatusObservation observation) {
+            WorkerStatus ws, WorkerStatus.StatusObservation observation) {
         requireStatusGeneration(ws);
         PrefillState.StatusReconciliation reconciliation =
                 prefillState.reconcileWorkerStatus(
@@ -424,13 +397,12 @@ public class PrefillEndpoint extends WorkerEndpoint {
                     "Private Prefill candidate produced locally-owned status facts");
         }
         rethrowPublicationFailure(reconciliation.publicationFailure());
-        return () -> { };
+        return () -> {};
     }
 
     @Override
     public Runnable observeStatusHeartbeat(
-            WorkerStatus ws,
-            WorkerStatus.StatusObservation observation) {
+            WorkerStatus ws, WorkerStatus.StatusObservation observation) {
         requireStatusGeneration(ws);
         if (observation.owner() != ws) {
             throw new IllegalArgumentException(
@@ -441,8 +413,9 @@ public class PrefillEndpoint extends WorkerEndpoint {
         if (reconciliation.schedulingInputsChanged()) {
             runtime.signalSchedulingInputsChanged();
         }
-        return () -> endpointEvents.onPrefillStatus(
-                this, observation.role(), reconciliation.schedulerFacts());
+        return () ->
+                endpointEvents.onPrefillStatus(
+                        this, observation.role(), reconciliation.schedulerFacts());
     }
 
     private static void rethrowPublicationFailure(Throwable failure) {
@@ -453,19 +426,19 @@ public class PrefillEndpoint extends WorkerEndpoint {
             throw error;
         }
         if (failure != null) {
-            throw new IllegalStateException(
-                    "Prefill status publication failed", failure);
+            throw new IllegalStateException("Prefill status publication failed", failure);
         }
     }
 
-    private void reportBatchCompletionsNoFail(
-            List<PrefillState.BatchCompletion> completions) {
+    private void reportBatchCompletionsNoFail(List<PrefillState.BatchCompletion> completions) {
         try {
             reportBatchCompletions(completions);
         } catch (Throwable reportingFailure) {
             try {
-                logger.warn("Prefill status committed but completion reporting failed: engine={}",
-                        getIp(), reportingFailure);
+                logger.warn(
+                        "Prefill status committed but completion reporting failed: engine={}",
+                        getIp(),
+                        reportingFailure);
             } catch (Throwable ignoredLoggingFailure) {
                 // Status facts must still reach the exact scheduler projection.
             }
@@ -474,21 +447,27 @@ public class PrefillEndpoint extends WorkerEndpoint {
 
     /** Re-estimate surviving members, using the default formula if the configured predictor fails. */
     private long predictRepackedBatchMs(List<RequestExecution> survivingRequests) {
-        PrefillBatchFeatures features = PrefillBatchFeatures.from(
-                survivingRequests,
-                item -> Math.max(0L, item.seqLen()),
-                item -> Math.max(0L, Math.min(item.hitCache(), item.seqLen())));
+        PrefillBatchFeatures features =
+                PrefillBatchFeatures.from(
+                        survivingRequests,
+                        item -> Math.max(0L, item.seqLen()),
+                        item -> Math.max(0L, Math.min(item.hitCache(), item.seqLen())));
         try {
-            return PrefillPredictionBoundary.predictCommittedBatchMs(predictor.evaluator(), features);
+            return PrefillPredictionBoundary.predictCommittedBatchMs(
+                    predictor.evaluator(), features);
         } catch (RuntimeException predictionFailure) {
             try {
-                logger.error("Prefill batch repack prediction failed; using default formula "
+                logger.error(
+                        "Prefill batch repack prediction failed; using default formula "
                                 + "engine={} surviving_requests={}",
-                        getIp(), survivingRequests.size(), predictionFailure);
+                        getIp(),
+                        survivingRequests.size(),
+                        predictionFailure);
             } catch (RuntimeException ignoredLoggingFailure) {
                 // Prediction logging cannot block membership settlement.
             }
-            return PrefillPredictionBoundary.predictCommittedBatchMs(DEFAULT_BATCH_PREDICTOR, features);
+            return PrefillPredictionBoundary.predictCommittedBatchMs(
+                    DEFAULT_BATCH_PREDICTOR, features);
         }
     }
 
@@ -532,8 +511,7 @@ public class PrefillEndpoint extends WorkerEndpoint {
 
     @Override
     public OptionalLong getLoadMetric() {
-        return prefillState.committedSnapshot()
-                .totalRemainingWorkMs();
+        return prefillState.committedSnapshot().totalRemainingWorkMs();
     }
 
     public PrefillTimePredictor getPredictor() {
@@ -553,8 +531,7 @@ public class PrefillEndpoint extends WorkerEndpoint {
         reporter.reportBatcherQueueSize(role, engineIp, queueSize);
         // Priority-bucketed batch queue length — single-report with priority tag.
         // Empty queue fallback: report priority=0 depth=0 so tagged panels don't gap.
-        Map<Integer, Integer> sizeByPriority =
-                runtime.queueSizeByPriority();
+        Map<Integer, Integer> sizeByPriority = runtime.queueSizeByPriority();
         if (sizeByPriority.isEmpty()) {
             reporter.reportBatcherQueueDepthByPriority(role, engineIp, 0, 0);
         } else {
@@ -574,18 +551,19 @@ public class PrefillEndpoint extends WorkerEndpoint {
      * engine-reported actual execution time (max across the batch's finished tasks),
      * then log and emit prediction-accuracy metrics.
      */
-    private void reportBatchCompletions(
-            List<PrefillState.BatchCompletion> completions) {
+    private void reportBatchCompletions(List<PrefillState.BatchCompletion> completions) {
         completions.forEach(this::reportBatchCompletion);
     }
 
-    private void reportBatchCompletion(
-            PrefillState.BatchCompletion completion) {
+    private void reportBatchCompletion(PrefillState.BatchCompletion completion) {
         long batchId = completion.batchId();
         long actualMs = completion.actualWorkMs();
         if (!completion.successfulCompletion() || actualMs <= 0) {
-            logger.debug("batch completion not reportable: batchId={} success={} actualMs={}",
-                    batchId, completion.successfulCompletion(), actualMs);
+            logger.debug(
+                    "batch completion not reportable: batchId={} success={} actualMs={}",
+                    batchId,
+                    completion.successfulCompletion(),
+                    actualMs);
             return;
         }
 
@@ -593,22 +571,28 @@ public class PrefillEndpoint extends WorkerEndpoint {
         long gapMs = actualMs - predictedMs;
         org.flexlb.util.Logger.debug(
                 "flexlb_batch_complete batch_id={} predicted_ms={} actual_ms={} gap_ms={} batch_size={} engine={}",
-                batchId, predictedMs, actualMs, gapMs,
-                completion.originalFeatures().batchSize(), getIp());
+                batchId,
+                predictedMs,
+                actualMs,
+                gapMs,
+                completion.originalFeatures().batchSize(),
+                getIp());
 
         // A failed/removed member makes the original batch an invalid learning
         // sample even if another member completed successfully.
         if (completion.learningEligible()) {
             try {
-                PrefillTimePredictor.LearningResult learningResult = predictor.learn(
-                        completion.originalFeatures(), predictedMs, actualMs);
-                if (learningResult
-                        == PrefillTimePredictor.LearningResult.MODEL_UPDATED) {
+                PrefillTimePredictor.LearningResult learningResult =
+                        predictor.learn(completion.originalFeatures(), predictedMs, actualMs);
+                if (learningResult == PrefillTimePredictor.LearningResult.MODEL_UPDATED) {
                     runtime.signalSchedulingInputsChanged();
                 }
             } catch (RuntimeException learningFailure) {
-                logger.warn("batch predictor learning failed after settlement: batchId={} engine={}",
-                        batchId, getIp(), learningFailure);
+                logger.warn(
+                        "batch predictor learning failed after settlement: batchId={} engine={}",
+                        batchId,
+                        getIp(),
+                        learningFailure);
             }
         }
 
@@ -619,23 +603,31 @@ public class PrefillEndpoint extends WorkerEndpoint {
             reporter.reportBatchPredictedTimeMs(
                     getStatus().getRole().name(), getStatus().getMetricIpPort(), predictedMs);
         } catch (RuntimeException telemetryFailure) {
-            logger.warn("batch predicted-time metric failed: batchId={} engine={}",
-                    batchId, getIp(), telemetryFailure);
+            logger.warn(
+                    "batch predicted-time metric failed: batchId={} engine={}",
+                    batchId,
+                    getIp(),
+                    telemetryFailure);
         }
         try {
             reporter.reportBatchActualTimeMs(
                     getStatus().getRole().name(), getStatus().getMetricIpPort(), actualMs);
         } catch (RuntimeException telemetryFailure) {
-            logger.warn("batch actual-time metric failed: batchId={} engine={}",
-                    batchId, getIp(), telemetryFailure);
+            logger.warn(
+                    "batch actual-time metric failed: batchId={} engine={}",
+                    batchId,
+                    getIp(),
+                    telemetryFailure);
         }
         try {
             reporter.reportBatchPredictGapMs(
                     getStatus().getRole().name(), getStatus().getMetricIpPort(), gapMs);
         } catch (RuntimeException telemetryFailure) {
-            logger.warn("batch prediction-gap metric failed: batchId={} engine={}",
-                    batchId, getIp(), telemetryFailure);
+            logger.warn(
+                    "batch prediction-gap metric failed: batchId={} engine={}",
+                    batchId,
+                    getIp(),
+                    telemetryFailure);
         }
     }
-
 }

@@ -1,6 +1,5 @@
 package org.flexlb.balance.scheduler;
 
-import org.flexlb.testfixture.WorkerStatusTestFixtures;
 import org.flexlb.balance.delivery.CapacityBoundary;
 import org.flexlb.balance.delivery.DeliveryMetrics;
 import org.flexlb.balance.delivery.DeliveryResult;
@@ -21,16 +20,17 @@ import org.flexlb.config.ModelMetaConfig;
 import org.flexlb.config.SchedulerConfig;
 import org.flexlb.dao.loadbalance.Response;
 import org.flexlb.dao.loadbalance.ServerStatus;
-import org.flexlb.testfixture.TaskInfo;
 import org.flexlb.dao.master.WorkerStatus;
-import org.flexlb.testfixture.WorkerStatusResponse;
 import org.flexlb.dao.route.RoleType;
 import org.flexlb.enums.TaskPhase;
-import org.flexlb.service.monitor.StatusFailureReporter;
 import org.flexlb.service.monitor.BatchSchedulerReporter;
 import org.flexlb.service.monitor.EngineHealthReporter;
 import org.flexlb.service.monitor.RequestSchedulerReporter;
+import org.flexlb.service.monitor.StatusFailureReporter;
 import org.flexlb.sync.status.WorkerDirectory;
+import org.flexlb.testfixture.TaskInfo;
+import org.flexlb.testfixture.WorkerStatusResponse;
+import org.flexlb.testfixture.WorkerStatusTestFixtures;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -38,7 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -49,10 +48,14 @@ import static org.mockito.Mockito.when;
 class PdfusionSchedulingTest {
     @ParameterizedTest
     @CsvSource({
-            "false,false,false,false", "false,false,false,true", "false,false,true,false", "false,false,true,true",
-            "false,true,false,false", "false,true,false,true", "false,true,true,false", "false,true,true,true",
-            "true,false,false,false"})
-    void fusionNeedsOnlyItsOwnRole(boolean direct, boolean priority, boolean window, boolean batch) throws Exception {
+        "false,false,false,false", "false,false,false,true", "false,false,true,false",
+                "false,false,true,true",
+        "false,true,false,false", "false,true,false,true", "false,true,true,false",
+                "false,true,true,true",
+        "true,false,false,false"
+    })
+    void fusionNeedsOnlyItsOwnRole(boolean direct, boolean priority, boolean window, boolean batch)
+            throws Exception {
         FlexlbConfig config = SchedulingTestConfig.batchConfig();
         SchedulingTestConfig.useNonBatchDispatcher(config);
         if (priority) {
@@ -78,20 +81,47 @@ class PdfusionSchedulingTest {
         RequestSchedulerReporter requestReporter = mock(RequestSchedulerReporter.class);
         RequestRegistry lifecycle = new RequestRegistry(service, reporter, requestReporter);
         PlacementAvailability availability = new PlacementAvailability();
-        DeliveryStrategy delivery = batch
-                ? new BatchDeliveryStrategy(() -> CapacityBoundary.Attempt.accepted(
-                        new BatchDeliveryStrategy.PreparedSubmission() {
-                            public void submit(BatchDeliveryStrategy.Delivery delivery) {
-                                delivery.run((items, id, predicted, reason, observer) ->
-                                        items.forEach(item -> observer.accept(item, DeliveryResult.delivered())));
-                            }
-                            public void close() { }
-                        }), new AtomicLong()::incrementAndGet,
-                        lifecycle, new DeliveryMetrics(reporter))
-                : new RouteDeliveryStrategy(lifecycle, new DeliveryMetrics(reporter));
-        EndpointRegistry endpoints = new EndpointRegistry(service, new EndpointEventProjector(lifecycle, mock(StatusFailureReporter.class)), reporter,
-                delivery, availability);
-        WorkerStatus worker = WorkerStatusTestFixtures.readyForScheduling(WorkerStatus.createDiscovered(RoleType.PDFUSION, "g1", "127.0.0.1", 8080, 8081, "test"));
+        DeliveryStrategy delivery =
+                batch
+                        ? new BatchDeliveryStrategy(
+                                () ->
+                                        CapacityBoundary.Attempt.accepted(
+                                                new BatchDeliveryStrategy.PreparedSubmission() {
+                                                    public void submit(
+                                                            BatchDeliveryStrategy.Delivery
+                                                                    delivery) {
+                                                        delivery.run(
+                                                                (items,
+                                                                        id,
+                                                                        predicted,
+                                                                        reason,
+                                                                        observer) ->
+                                                                        items.forEach(
+                                                                                item ->
+                                                                                        observer
+                                                                                                .accept(
+                                                                                                        item,
+                                                                                                        DeliveryResult
+                                                                                                                .delivered())));
+                                                    }
+
+                                                    public void close() {}
+                                                }),
+                                new AtomicLong()::incrementAndGet,
+                                lifecycle,
+                                new DeliveryMetrics(reporter))
+                        : new RouteDeliveryStrategy(lifecycle, new DeliveryMetrics(reporter));
+        EndpointRegistry endpoints =
+                new EndpointRegistry(
+                        service,
+                        new EndpointEventProjector(lifecycle, mock(StatusFailureReporter.class)),
+                        reporter,
+                        delivery,
+                        availability);
+        WorkerStatus worker =
+                WorkerStatusTestFixtures.readyForScheduling(
+                        WorkerStatus.createDiscovered(
+                                RoleType.PDFUSION, "g1", "127.0.0.1", 8080, 8081, "test"));
         WorkerStatusResponse status = new WorkerStatusResponse();
         status.setRole(RoleType.PDFUSION);
         status.setAlive(true);
@@ -103,8 +133,11 @@ class PdfusionSchedulingTest {
         status.setMaxBatchTokensSize(10000L);
         worker.lock.lock();
         try {
-            endpoints.publishPreparedEndpoint(worker.getIpPort(), worker,
-                    WorkerStatusTestFixtures.prepare(worker, WorkerStatusTestFixtures.observation(worker, status)));
+            endpoints.publishPreparedEndpoint(
+                    worker.getIpPort(),
+                    worker,
+                    WorkerStatusTestFixtures.prepare(
+                            worker, WorkerStatusTestFixtures.observation(worker, status)));
         } finally {
             worker.lock.unlock();
         }
@@ -141,9 +174,11 @@ class PdfusionSchedulingTest {
             long requestId = 920001L;
             var context = RequestLifecycleTestSupport.context(config, requestId);
             Response response = scheduler.submit(context).get(3, TimeUnit.SECONDS);
-            assertTrue(response.isSuccess(), "PDFUSION route failed: " + response.getErrorMessage());
-            assertEquals(List.of(RoleType.PDFUSION), response.getServerStatus().stream()
-                    .map(ServerStatus::getRole).toList());
+            assertTrue(
+                    response.isSuccess(), "PDFUSION route failed: " + response.getErrorMessage());
+            assertEquals(
+                    List.of(RoleType.PDFUSION),
+                    response.getServerStatus().stream().map(ServerStatus::getRole).toList());
             assertEquals(0, endpoints.getEndpointCount(RoleType.DECODE));
             assertEquals(1, lifecycle.trackedRequestCount());
             PrefillEndpoint endpoint =
@@ -165,8 +200,12 @@ class PdfusionSchedulingTest {
             Runnable projection;
             worker.lock.lock();
             try {
-                projection = endpoint.applyPreparedStatus(worker,
-                        WorkerStatusTestFixtures.prepare(worker, WorkerStatusTestFixtures.observation(worker, status)));
+                projection =
+                        endpoint.applyPreparedStatus(
+                                worker,
+                                WorkerStatusTestFixtures.prepare(
+                                        worker,
+                                        WorkerStatusTestFixtures.observation(worker, status)));
             } finally {
                 worker.lock.unlock();
             }
@@ -190,5 +229,4 @@ class PdfusionSchedulingTest {
             runtime.shutdown();
         }
     }
-
 }

@@ -10,11 +10,10 @@ import org.flexlb.dao.master.WorkerStatusProvider;
 import org.flexlb.dao.route.RoleType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import javax.annotation.PreDestroy;
-
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -42,8 +41,8 @@ import java.util.function.Supplier;
 public final class WorkerDirectory implements WorkerStatusProvider {
     private static final Logger diagnosticLogger = LoggerFactory.getLogger("syncLogger");
 
-    private final Map<RoleType, ConcurrentHashMap<String, WorkerStatus>>
-            statusesByRole = new EnumMap<>(RoleType.class);
+    private final Map<RoleType, ConcurrentHashMap<String, WorkerStatus>> statusesByRole =
+            new EnumMap<>(RoleType.class);
     private final EndpointRegistry endpointRegistry;
     // At most one task per RETIRING generation: its identity stays installed
     // until cleanup completes. Never run drains on sync/status/scheduler callers.
@@ -57,26 +56,34 @@ public final class WorkerDirectory implements WorkerStatusProvider {
     }
 
     public void completeRetirementAsync(
-            RoleType role, String address, WorkerStatus status,
+            RoleType role,
+            String address,
+            WorkerStatus status,
             EndpointRegistry.DetachedGeneration detached,
-            CacheAwareService cacheAwareService, Logger logger) {
-        retirementExecutor.execute(() -> completeRetirement(
-                role, address, status, detached, cacheAwareService, logger));
+            CacheAwareService cacheAwareService,
+            Logger logger) {
+        retirementExecutor.execute(
+                () ->
+                        completeRetirement(
+                                role, address, status, detached, cacheAwareService, logger));
     }
 
     @Autowired
     public WorkerDirectory(EndpointRegistry endpointRegistry) {
-        this(endpointRegistry, Executors.newScheduledThreadPool(4, runnable -> {
-            Thread thread = new Thread(runnable, "worker-retirement");
-            thread.setDaemon(true);
-            return thread;
-        }));
+        this(
+                endpointRegistry,
+                Executors.newScheduledThreadPool(
+                        4,
+                        runnable -> {
+                            Thread thread = new Thread(runnable, "worker-retirement");
+                            thread.setDaemon(true);
+                            return thread;
+                        }));
     }
 
     public WorkerDirectory(EndpointRegistry endpointRegistry, Executor retirementExecutor) {
         this.retirementExecutor = Objects.requireNonNull(retirementExecutor, "retirementExecutor");
-        this.endpointRegistry = Objects.requireNonNull(
-                endpointRegistry, "endpointRegistry");
+        this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         for (RoleType role : RoleType.values()) {
             statusesByRole.put(role, new ConcurrentHashMap<>());
         }
@@ -116,9 +123,7 @@ public final class WorkerDirectory implements WorkerStatusProvider {
      * WorkerStatus response commits.
      */
     public WorkerStatus currentOrDiscover(
-            RoleType role,
-            String address,
-            Supplier<WorkerStatus> discoveredFactory) {
+            RoleType role, String address, Supplier<WorkerStatus> discoveredFactory) {
         Objects.requireNonNull(role, "role");
         Objects.requireNonNull(address, "address");
         Objects.requireNonNull(discoveredFactory, "discoveredFactory");
@@ -164,11 +169,9 @@ public final class WorkerDirectory implements WorkerStatusProvider {
 
     /** Publish the first endpoint for one exact discovered generation. */
     public EndpointRegistry.EndpointPublication publishPreparedEndpoint(
-            String address,
-            WorkerStatus status,
-            WorkerStatus.PreparedStatus prepared) {
-        EndpointRegistry.EndpointPublication publication = endpointRegistry.publishPreparedEndpoint(
-                address, status, prepared);
+            String address, WorkerStatus status, WorkerStatus.PreparedStatus prepared) {
+        EndpointRegistry.EndpointPublication publication =
+                endpointRegistry.publishPreparedEndpoint(address, status, prepared);
         if (publication.endpoint() != null) {
             status.trace().record(Stage.ENDPOINT_PUBLISHED);
         }
@@ -180,33 +183,34 @@ public final class WorkerDirectory implements WorkerStatusProvider {
      * The caller must hold the matching {@link WorkerStatus#lock}.
      */
     public EndpointRegistry.DetachedGeneration beginRetirement(
-            RoleType role, String address, WorkerStatus status,
-            String reason) {
+            RoleType role, String address, WorkerStatus status, String reason) {
         Objects.requireNonNull(status, "status");
         Objects.requireNonNull(role, "role");
         Objects.requireNonNull(address, "address");
         status.requireActiveGeneration();
 
         WorkerStatus.PollHealth health = status.pollHealth();
-        status.trace().recordUnavailable(reason, health.lastSuccessfulPollUs(),
-                health.consecutiveWorkerFailures());
+        status.trace()
+                .recordUnavailable(
+                        reason, health.lastSuccessfulPollUs(), health.consecutiveWorkerFailures());
 
-        WorkerEndpoint expected = endpointRegistry.get(
-                role, address, status);
+        WorkerEndpoint expected = endpointRegistry.get(role, address, status);
         EndpointRegistry.DetachedGeneration detached =
-                endpointRegistry.detachAndBeginRetirement(
-                        role, address, status);
+                endpointRegistry.detachAndBeginRetirement(role, address, status);
         if ((detached == null) != (expected == null)
                 || detached != null && !detached.ownsEndpoint(expected)) {
             throw new IllegalStateException(
                     "Exact endpoint detach invariant failed for "
-                            + address + "#" + status.getGenerationId());
+                            + address
+                            + "#"
+                            + status.getGenerationId());
         }
-        if (detached == null
-                && !status.beginRetirementAfterEndpointGateClosed()) {
+        if (detached == null && !status.beginRetirementAfterEndpointGateClosed()) {
             throw new IllegalStateException(
                     "WorkerStatus generation changed while its lock was held: "
-                            + address + "#" + status.getGenerationId());
+                            + address
+                            + "#"
+                            + status.getGenerationId());
         }
         status.trace().record(Stage.ENDPOINT_WITHDRAWN);
         // Format bounded evidence; the existing async appender handles file I/O.
@@ -244,8 +248,7 @@ public final class WorkerDirectory implements WorkerStatusProvider {
             cleanupFailure = retirementFailure;
             status.trace().record(Stage.ENDPOINT_AWAIT_FAILED, retirementFailure);
         } finally {
-            finalized = finalizeRetirement(
-                    role, address, status, cacheAwareService, logger);
+            finalized = finalizeRetirement(role, address, status, cacheAwareService, logger);
         }
         String outcome = cleanupFailure == null && finalized ? "SUCCESS" : "ERROR";
         status.trace().record(Stage.RETIREMENT_CLEANUP_END);
@@ -254,7 +257,9 @@ public final class WorkerDirectory implements WorkerStatusProvider {
         if (cleanupFailure != null) {
             logger.error(
                     "Endpoint cleanup failed after retiring generation {} for {}",
-                    status.getGenerationId(), address, cleanupFailure);
+                    status.getGenerationId(),
+                    address,
+                    cleanupFailure);
         }
     }
 
@@ -271,7 +276,8 @@ public final class WorkerDirectory implements WorkerStatusProvider {
             status.trace().record(Stage.RETIREMENT_CACHE_LOCK_ACQUIRED);
             if (status.isActiveGeneration() || statuses.get(address) != status) {
                 status.trace().record(Stage.FINALIZE_FAILED, "GENERATION_CHANGED_OR_NOT_RETIRING");
-                logger.error("Invalid retirement identity for {}#{}", address, status.getGenerationId());
+                logger.error(
+                        "Invalid retirement identity for {}#{}", address, status.getGenerationId());
                 return false;
             }
             boolean cacheCleanupSucceeded = true;
@@ -286,22 +292,30 @@ public final class WorkerDirectory implements WorkerStatusProvider {
                 status.trace().record(Stage.CACHE_CLEANUP_FAILED, cacheCleanupFailure);
                 logger.error(
                         "Cache cleanup failed while retiring generation {} for {}",
-                        status.getGenerationId(), address, cacheCleanupFailure);
+                        status.getGenerationId(),
+                        address,
+                        cacheCleanupFailure);
             }
             if (!cacheCleanupSucceeded) {
                 // Keep same-address replacements out until old mappings are gone.
-                if (retirementExecutor instanceof ScheduledExecutorService scheduler && !scheduler.isShutdown()) {
-                    scheduler.schedule(() -> {
-                        if (isCurrentStatus(role, address, status)) {
-                            completeRetirement(role, address, status, null, cacheAwareService, logger);
-                        }
-                    }, 1L, TimeUnit.SECONDS);
+                if (retirementExecutor instanceof ScheduledExecutorService scheduler
+                        && !scheduler.isShutdown()) {
+                    scheduler.schedule(
+                            () -> {
+                                if (isCurrentStatus(role, address, status)) {
+                                    completeRetirement(
+                                            role, address, status, null, cacheAwareService, logger);
+                                }
+                            },
+                            1L,
+                            TimeUnit.SECONDS);
                 }
                 return false;
             }
             if (!statuses.remove(address, status)) {
                 status.trace().record(Stage.FINALIZE_FAILED, "STATUS_REMOVAL_FAILED");
-                logger.error("Exact status removal failed for {}#{}", address, status.getGenerationId());
+                logger.error(
+                        "Exact status removal failed for {}#{}", address, status.getGenerationId());
                 return false;
             }
             status.trace().record(Stage.STATUS_REMOVED);
@@ -310,7 +324,9 @@ public final class WorkerDirectory implements WorkerStatusProvider {
             status.trace().record(Stage.FINALIZE_FAILED, finalizationFailure);
             logger.error(
                     "Status retirement finalization failed for {}#{}",
-                    address, status.getGenerationId(), finalizationFailure);
+                    address,
+                    status.getGenerationId(),
+                    finalizationFailure);
             return false;
         } finally {
             status.cacheMutationLock.unlock();
@@ -320,11 +336,19 @@ public final class WorkerDirectory implements WorkerStatusProvider {
 
     private void reportTrace(String address, WorkerStatus status, String operation, String result) {
         try {
-            if (!diagnosticLogger.isWarnEnabled()) { return; }
+            if (!diagnosticLogger.isWarnEnabled()) {
+                return;
+            }
             var snapshot = status.trace().snapshot();
             // syncLogger already uses a bounded, never-blocking Logback AsyncAppender.
-            diagnosticLogger.warn("event=worker_trace endpoint={} generation={} operation={} result={} capturedMs={} {}",
-                    address, status.getGenerationId(), operation, result, snapshot.capturedAtMs(), snapshot.compact());
+            diagnosticLogger.warn(
+                    "event=worker_trace endpoint={} generation={} operation={} result={} capturedMs={} {}",
+                    address,
+                    status.getGenerationId(),
+                    operation,
+                    result,
+                    snapshot.capturedAtMs(),
+                    snapshot.compact());
         } catch (RuntimeException | LinkageError unavailable) {
             // Diagnostics cannot interrupt endpoint withdrawal or cleanup.
         }
@@ -339,8 +363,7 @@ public final class WorkerDirectory implements WorkerStatusProvider {
      * Immutable, non-owning Prefill generations for one routing traversal.
      * The winning address must still be captured and identity-checked.
      */
-    public List<EndpointRegistry.PrefillRoutingEntry> prefillRoutingSnapshot(
-            RoleType role) {
+    public List<EndpointRegistry.PrefillRoutingEntry> prefillRoutingSnapshot(RoleType role) {
         return endpointRegistry.prefillRoutingSnapshot(role);
     }
 
@@ -350,8 +373,7 @@ public final class WorkerDirectory implements WorkerStatusProvider {
     }
 
     /** Capture one exact currently published endpoint generation by address. */
-    public WorkerEndpoint.GenerationPin captureEndpoint(
-            RoleType role, String ipPort) {
+    public WorkerEndpoint.GenerationPin captureEndpoint(RoleType role, String ipPort) {
         return endpointRegistry.capture(role, ipPort);
     }
 
@@ -377,11 +399,9 @@ public final class WorkerDirectory implements WorkerStatusProvider {
     }
 
     /** Capture exact endpoint generations for one routing decision. */
-    public List<WorkerEndpoint.GenerationPin> captureEndpoints(
-            RoleType role, String group) {
+    public List<WorkerEndpoint.GenerationPin> captureEndpoints(RoleType role, String group) {
         List<WorkerEndpoint.GenerationPin> captured = endpointRegistry.capture(role);
-        List<WorkerEndpoint.GenerationPin> matching =
-                new ArrayList<>(captured.size());
+        List<WorkerEndpoint.GenerationPin> matching = new ArrayList<>(captured.size());
         try {
             for (int index = 0; index < captured.size(); index++) {
                 WorkerEndpoint.GenerationPin pin = captured.get(index);

@@ -41,8 +41,8 @@ final class ExpirationTimer implements AutoCloseable {
     /** Exact capabilities detached together from one slot during shutdown. */
     record DetachedDeadlines(
             RequestDeadline requestDeadline,
-            DecisionDeadline decisionDeadline, InactivityDeadline inactivityDeadline) {
-    }
+            DecisionDeadline decisionDeadline,
+            InactivityDeadline inactivityDeadline) {}
 
     /** Timers detached atomically at ACTIVE -> TERMINALIZING. */
     static final class DetachedRequestTimers {
@@ -53,7 +53,8 @@ final class ExpirationTimer implements AutoCloseable {
 
         DetachedRequestTimers(
                 RequestDeadline requestDeadline,
-                DecisionDeadline detachedDecisionDeadline, InactivityDeadline inactivityDeadline) {
+                DecisionDeadline detachedDecisionDeadline,
+                InactivityDeadline inactivityDeadline) {
             this.requestDeadline = requestDeadline;
             this.inactivityDeadline = inactivityDeadline;
             this.detachedDecisionDeadline = detachedDecisionDeadline;
@@ -66,8 +67,11 @@ final class ExpirationTimer implements AutoCloseable {
             released = true;
             Throwable failure = null;
             if (inactivityDeadline != null) {
-                try { timer.cancel(inactivityDeadline); }
-                catch (Throwable timerFailure) { failure = timerFailure; }
+                try {
+                    timer.cancel(inactivityDeadline);
+                } catch (Throwable timerFailure) {
+                    failure = timerFailure;
+                }
             }
             if (requestDeadline != null) {
                 try {
@@ -102,11 +106,9 @@ final class ExpirationTimer implements AutoCloseable {
             this.owner = owner;
         }
 
-        private synchronized void installScheduled(
-                ScheduledFuture<?> exactScheduled) {
+        private synchronized void installScheduled(ScheduledFuture<?> exactScheduled) {
             if (scheduled != null) {
-                throw new IllegalStateException(
-                        "deadline already owns a scheduled task");
+                throw new IllegalStateException("deadline already owns a scheduled task");
             }
             scheduled = exactScheduled;
             if (state == DeadlineState.CANCELED) {
@@ -126,8 +128,8 @@ final class ExpirationTimer implements AutoCloseable {
                     yield true;
                 }
                 case CANCELED, CONSUMED -> false;
-                case ARMED -> throw new IllegalStateException(
-                        "deadline capability was published twice");
+                case ARMED ->
+                        throw new IllegalStateException("deadline capability was published twice");
             };
         }
 
@@ -148,8 +150,7 @@ final class ExpirationTimer implements AutoCloseable {
         final boolean cancel() {
             ScheduledFuture<?> exactScheduled;
             synchronized (this) {
-                if (state == DeadlineState.CONSUMED
-                        || state == DeadlineState.CANCELED) {
+                if (state == DeadlineState.CONSUMED || state == DeadlineState.CANCELED) {
                     return false;
                 }
                 state = DeadlineState.CANCELED;
@@ -171,17 +172,23 @@ final class ExpirationTimer implements AutoCloseable {
 
     /** Wake-up to recheck the latest request activity, not proof of expiration. */
     static final class InactivityDeadline extends DeadlineRegistration {
-        private InactivityDeadline(ExpirationTimer owner) { super(owner); }
+        private InactivityDeadline(ExpirationTimer owner) {
+            super(owner);
+        }
     }
 
     /** Exact one-shot capability for request visibility and PD handoff detection. */
     static final class DecisionDeadline extends DeadlineRegistration {
         private final long deadlineAtMs;
+
         private DecisionDeadline(ExpirationTimer owner, long deadlineAtMs) {
             super(owner);
             this.deadlineAtMs = deadlineAtMs;
         }
-        long deadlineAtMs() { return deadlineAtMs; }
+
+        long deadlineAtMs() {
+            return deadlineAtMs;
+        }
     }
 
     private final RequestRegistry lifecycle;
@@ -196,17 +203,18 @@ final class ExpirationTimer implements AutoCloseable {
         this(lifecycle, System::currentTimeMillis);
     }
 
-    ExpirationTimer(
-            RequestRegistry lifecycle,
-            LongSupplier clock) {
+    ExpirationTimer(RequestRegistry lifecycle, LongSupplier clock) {
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.executor = new ScheduledThreadPoolExecutor(1, runnable -> {
-            Thread thread = new Thread(
-                    runnable, "request-scheduler-expiration");
-            thread.setDaemon(true);
-            return thread;
-        }, new ThreadPoolExecutor.AbortPolicy());
+        this.executor =
+                new ScheduledThreadPoolExecutor(
+                        1,
+                        runnable -> {
+                            Thread thread = new Thread(runnable, "request-scheduler-expiration");
+                            thread.setDaemon(true);
+                            return thread;
+                        },
+                        new ThreadPoolExecutor.AbortPolicy());
         executor.setRemoveOnCancelPolicy(true);
         executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
     }
@@ -219,9 +227,7 @@ final class ExpirationTimer implements AutoCloseable {
      * @return its exact slot-owned capability, or null when the slot rejected
      *         installation because another lifecycle transition already won
      */
-    RequestDeadline attachRequestDeadline(
-            RequestSlot exactSlot,
-            long deadlineAtMs) {
+    RequestDeadline attachRequestDeadline(RequestSlot exactSlot, long deadlineAtMs) {
         if (lifecycle.isShuttingDown()) {
             return null;
         }
@@ -240,9 +246,7 @@ final class ExpirationTimer implements AutoCloseable {
         }
     }
 
-    private boolean installRequestDeadline(
-            RequestSlot exactSlot,
-            RequestDeadline exactDeadline) {
+    private boolean installRequestDeadline(RequestSlot exactSlot, RequestDeadline exactDeadline) {
         synchronized (exactSlot) {
             return lifecycle.isCurrentSlot(exactSlot)
                     && exactSlot.installRequestDeadline(exactDeadline);
@@ -257,7 +261,9 @@ final class ExpirationTimer implements AutoCloseable {
 
     void attachDecisionDeadline(RequestSlot slot) {
         OptionalLong deadline = slot.decisionDeadlineAtMs();
-        if (deadline.isPresent()) { registerDecisionDeadline(slot, deadline.getAsLong()); }
+        if (deadline.isPresent()) {
+            registerDecisionDeadline(slot, deadline.getAsLong());
+        }
     }
 
     /**
@@ -266,9 +272,7 @@ final class ExpirationTimer implements AutoCloseable {
      * @return its exact slot-owned capability, or null when the slot rejected
      *         installation because another lifecycle transition already won
      */
-    DecisionDeadline registerDecisionDeadline(
-            RequestSlot exactSlot,
-            long deadlineAtMs) {
+    DecisionDeadline registerDecisionDeadline(RequestSlot exactSlot, long deadlineAtMs) {
         if (lifecycle.isShuttingDown()) {
             return null;
         }
@@ -287,9 +291,7 @@ final class ExpirationTimer implements AutoCloseable {
         }
     }
 
-    private boolean installDecisionDeadline(
-            RequestSlot exactSlot,
-            DecisionDeadline exactDeadline) {
+    private boolean installDecisionDeadline(RequestSlot exactSlot, DecisionDeadline exactDeadline) {
         synchronized (exactSlot) {
             return lifecycle.isCurrentSlot(exactSlot)
                     && exactSlot.installDecisionDeadline(exactDeadline);
@@ -301,7 +303,9 @@ final class ExpirationTimer implements AutoCloseable {
     }
 
     void releaseDecisionDeadline(DecisionDeadline exact) {
-        if (exact == null) { return; }
+        if (exact == null) {
+            return;
+        }
         try {
             release(exact);
         } catch (Throwable failure) {
@@ -326,12 +330,17 @@ final class ExpirationTimer implements AutoCloseable {
             return null;
         }
         try {
-            return register(slot, new InactivityDeadline(this), delayUntil(deadlineAtMs.getAsLong()),
+            return register(
+                    slot,
+                    new InactivityDeadline(this),
+                    delayUntil(deadlineAtMs.getAsLong()),
                     (owner, exact) -> {
                         synchronized (owner) {
-                            return lifecycle.isCurrentSlot(owner) && owner.installInactivityDeadline(exact);
+                            return lifecycle.isCurrentSlot(owner)
+                                    && owner.installInactivityDeadline(exact);
                         }
-                    }, this::inactivityDeadlineExpired);
+                    },
+                    this::inactivityDeadlineExpired);
         } catch (RuntimeException timerStopped) {
             if (lifecycle.isShuttingDown()) {
                 return null;
@@ -359,11 +368,14 @@ final class ExpirationTimer implements AutoCloseable {
             BiConsumer<RequestSlot, D> expire) {
         beginRegistration();
         try {
-            schedule(exact, () -> {
-                if (exact.consume()) {
-                    expire.accept(exactSlot, exact);
-                }
-            }, delayMs);
+            schedule(
+                    exact,
+                    () -> {
+                        if (exact.consume()) {
+                            expire.accept(exactSlot, exact);
+                        }
+                    },
+                    delayMs);
             boolean installed;
             try {
                 installed = install.test(exactSlot, exact);
@@ -387,8 +399,7 @@ final class ExpirationTimer implements AutoCloseable {
     private void beginRegistration() {
         synchronized (registrationMonitor) {
             if (closeState != CloseState.OPEN) {
-                throw new RejectedExecutionException(
-                        "ExpirationTimer is closing");
+                throw new RejectedExecutionException("ExpirationTimer is closing");
             }
             inflightRegistrations++;
         }
@@ -397,8 +408,7 @@ final class ExpirationTimer implements AutoCloseable {
     private void endRegistration() {
         synchronized (registrationMonitor) {
             if (inflightRegistrations <= 0) {
-                throw new IllegalStateException(
-                        "ExpirationTimer registration count underflow");
+                throw new IllegalStateException("ExpirationTimer registration count underflow");
             }
             inflightRegistrations--;
             if (inflightRegistrations == 0) {
@@ -407,14 +417,10 @@ final class ExpirationTimer implements AutoCloseable {
         }
     }
 
-    private void schedule(
-            DeadlineRegistration exact,
-            Runnable callback,
-            long delayMs) {
+    private void schedule(DeadlineRegistration exact, Runnable callback, long delayMs) {
         ScheduledFuture<?> scheduled;
         try {
-            scheduled = executor.schedule(
-                    callback, delayMs, TimeUnit.MILLISECONDS);
+            scheduled = executor.schedule(callback, delayMs, TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException rejected) {
             exact.cancel();
             throw rejected;
@@ -456,8 +462,7 @@ final class ExpirationTimer implements AutoCloseable {
 
     private DeadlineRegistration requireOwner(DeadlineRegistration exact) {
         if (exact.owner != this) {
-            throw new IllegalArgumentException(
-                    "deadline belongs to another ExpirationTimer");
+            throw new IllegalArgumentException("deadline belongs to another ExpirationTimer");
         }
         return exact;
     }
@@ -567,25 +572,20 @@ final class ExpirationTimer implements AutoCloseable {
                 failure = append(failure, detachFailure);
                 continue;
             }
-            failure = cancelDetached(
-                    detached.requestDeadline(), failure);
-            failure = cancelDetached(
-                    detached.decisionDeadline(), failure);
+            failure = cancelDetached(detached.requestDeadline(), failure);
+            failure = cancelDetached(detached.decisionDeadline(), failure);
             failure = cancelDetached(detached.inactivityDeadline(), failure);
         }
         return failure;
     }
 
-    private DetachedDeadlines detachDeadlinesForClose(
-            RequestSlot exactSlot) {
+    private DetachedDeadlines detachDeadlinesForClose(RequestSlot exactSlot) {
         synchronized (exactSlot) {
             return exactSlot.detachDeadlinesForTimerClose();
         }
     }
 
-    private Throwable cancelDetached(
-            DeadlineRegistration exact,
-            Throwable failure) {
+    private Throwable cancelDetached(DeadlineRegistration exact, Throwable failure) {
         if (exact == null) {
             return failure;
         }
@@ -617,6 +617,4 @@ final class ExpirationTimer implements AutoCloseable {
             throw error;
         }
     }
-
-
 }

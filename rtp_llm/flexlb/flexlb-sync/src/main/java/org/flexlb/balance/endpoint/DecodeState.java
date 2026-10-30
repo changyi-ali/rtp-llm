@@ -103,6 +103,7 @@ final class DecodeState {
 
     /** Mutated under admissionLock; volatile for the lock-free waiter predicate. */
     private volatile int activeEngineDispatchPermitCount;
+
     /** Guarded by {@link #admissionLock}; zero is never issued. */
     private long nextReservationToken = 1L;
 
@@ -124,6 +125,7 @@ final class DecodeState {
      * reference and therefore disappears with this endpoint generation.</p>
      */
     private volatile DecodeRoutingView routingViewCache;
+
     private volatile DecodeEndpoint.AdmissionSummary admissionSummaryCache;
 
     // Reservation: acquire and release exact ownership.
@@ -158,8 +160,7 @@ final class DecodeState {
             String requestId, long kvTokens, long kvBudgetTokens, int priority) {
         if (!requestIdAvailableForReservationLocked(requestId)) {
             throw new IllegalStateException(
-                    "Decode request id is still owned by this endpoint generation: "
-                            + requestId);
+                    "Decode request id is still owned by this endpoint generation: " + requestId);
         }
         long reservationToken = nextReservationTokenLocked();
         DecodeRequestState newReservation =
@@ -168,8 +169,7 @@ final class DecodeState {
                 new ReservationHandle(status.getGenerationId(), requestId, reservationToken);
         if (decodeRequests.putIfAbsent(requestId, newReservation) != null) {
             throw new IllegalStateException(
-                    "Decode reservation appeared while admissionLock was held: "
-                            + requestId);
+                    "Decode reservation appeared while admissionLock was held: " + requestId);
         }
         reservedRequestCount.incrementAndGet();
         inputKvReservedTotal.addAndGet(kvTokens);
@@ -179,10 +179,8 @@ final class DecodeState {
     }
 
     private long nextReservationTokenLocked() {
-        if (nextReservationToken <= 0L
-                || nextReservationToken == Long.MAX_VALUE) {
-            throw new IllegalStateException(
-                    "Decode reservation token space exhausted");
+        if (nextReservationToken <= 0L || nextReservationToken == Long.MAX_VALUE) {
+            throw new IllegalStateException("Decode reservation token space exhausted");
         }
         return nextReservationToken++;
     }
@@ -223,7 +221,9 @@ final class DecodeState {
     }
 
     boolean hasOwnedResources(ReservationHandle reservation) {
-        if (reservation == null || reservation.endpointGenerationId() != status.getGenerationId()) { return false; }
+        if (reservation == null || reservation.endpointGenerationId() != status.getGenerationId()) {
+            return false;
+        }
         admissionLock.lock();
         try {
             DecodeRequestState current = requestState(reservation.requestId());
@@ -245,9 +245,7 @@ final class DecodeState {
                 return null;
             }
             return new ReservationHandle(
-                    status.getGenerationId(),
-                    requestId,
-                    current.reservationToken());
+                    status.getGenerationId(), requestId, current.reservationToken());
         } finally {
             admissionLock.unlock();
         }
@@ -261,17 +259,25 @@ final class DecodeState {
             }
             return ReservationReleaseResult.STALE;
         }
-        if (reservation.endpointGenerationId() != status.getGenerationId()) { return ReservationReleaseResult.STALE; }
+        if (reservation.endpointGenerationId() != status.getGenerationId()) {
+            return ReservationReleaseResult.STALE;
+        }
         admissionLock.lock();
         try {
             return switch (reason) {
                 case NOT_SENT -> releaseUnsentRequestLocked(reservation);
                 case LOCAL_ROLLBACK, COUNTERPART_FINISHED -> {
-                    if (releaseLocalReservationLocked(reservation, reason)) { yield ReservationReleaseResult.RELEASED; }
-                    yield hasOwnedResources(reservation) ? ReservationReleaseResult.STILL_OWNED : ReservationReleaseResult.STALE;
+                    if (releaseLocalReservationLocked(reservation, reason)) {
+                        yield ReservationReleaseResult.RELEASED;
+                    }
+                    yield hasOwnedResources(reservation)
+                            ? ReservationReleaseResult.STILL_OWNED
+                            : ReservationReleaseResult.STALE;
                 }
-                case EXPIRED -> expireRequestLocked(reservation)
-                        ? ReservationReleaseResult.RELEASED : ReservationReleaseResult.STALE;
+                case EXPIRED ->
+                        expireRequestLocked(reservation)
+                                ? ReservationReleaseResult.RELEASED
+                                : ReservationReleaseResult.STALE;
             };
         } finally {
             admissionLock.unlock();
@@ -293,7 +299,8 @@ final class DecodeState {
                                         || current.hasProtocolOwner());
         if (protectedOwner) {
             if (reason == ReleaseReason.LOCAL_ROLLBACK) {
-                throw localReleaseInvariant(reservation, "exact ownership is held by Engine/protocol lifecycle");
+                throw localReleaseInvariant(
+                        reservation, "exact ownership is held by Engine/protocol lifecycle");
             }
             return false;
         }
@@ -303,7 +310,8 @@ final class DecodeState {
         DispatchLease permit = current.dispatchPermit();
         if (permit != null && !isExactReservation(permit.reservation, reservation)) {
             if (reason == ReleaseReason.LOCAL_ROLLBACK) {
-                throw localReleaseInvariant(reservation, "dispatch permit belongs to another reservation");
+                throw localReleaseInvariant(
+                        reservation, "dispatch permit belongs to another reservation");
             }
             return false;
         }
@@ -313,9 +321,11 @@ final class DecodeState {
             return false;
         }
         if (!removeShadowExactLocked(requestId, current)) {
-            throw localReleaseInvariant(reservation, "validated shadow changed while admissionLock was held");
+            throw localReleaseInvariant(
+                    reservation, "validated shadow changed while admissionLock was held");
         }
-        if (reason == ReleaseReason.COUNTERPART_FINISHED && !decodeRequests.containsKey(requestId)) {
+        if (reason == ReleaseReason.COUNTERPART_FINISHED
+                && !decodeRequests.containsKey(requestId)) {
             rememberSettledLocked(requestId, System.currentTimeMillis());
         }
         admissionVersion.incrementAndGet();
@@ -335,10 +345,15 @@ final class DecodeState {
         }
         if (claim != null) {
             return settlePriorityClaimTerminalLocked(claim.attemptToken, reservation, claim)
-                    ? ReservationReleaseResult.RELEASED : ReservationReleaseResult.CONFLICT;
+                    ? ReservationReleaseResult.RELEASED
+                    : ReservationReleaseResult.CONFLICT;
         }
-        if (hasExactIncomingAttemptLocked(reservation)) { return ReservationReleaseResult.CONFLICT; }
-        if (!exact || !current.ownsRequest()) { return ReservationReleaseResult.STALE; }
+        if (hasExactIncomingAttemptLocked(reservation)) {
+            return ReservationReleaseResult.CONFLICT;
+        }
+        if (!exact || !current.countsTowardCapacity()) {
+            return ReservationReleaseResult.STALE;
+        }
         if (settleAuthoritativeTerminalLocked(reservation, true, System.currentTimeMillis())) {
             admissionVersion.incrementAndGet();
         }
@@ -370,8 +385,7 @@ final class DecodeState {
             }
             attempts.remove();
             for (ReservationHandle victim : attempt.remainingVictims.values()) {
-                PreemptionClaim victimClaim = exactPreemptionClaimLocked(
-                        entry.getKey(), victim);
+                PreemptionClaim victimClaim = exactPreemptionClaimLocked(entry.getKey(), victim);
                 if (victimClaim != null && victimClaim.phase.isLocallyReleasable()) {
                     releaseHeldKv(victimClaim);
                     removePreemptionClaimLocked(victim.requestId(), victimClaim);
@@ -380,8 +394,8 @@ final class DecodeState {
         }
 
         PreemptionClaim claim = state.preemptionClaim;
-        boolean confirmedSlot = state.confirmed()
-                || claim != null && claim.owner == ClaimOwner.ENGINE_CONFIRMED;
+        boolean confirmedSlot =
+                state.confirmed() || claim != null && claim.owner == ClaimOwner.ENGINE_CONFIRMED;
         if (claim != null) {
             EndpointPreemptionAttempt attempt = preemptionAttempts.get(claim.attemptToken);
             if (attempt != null) {
@@ -417,8 +431,8 @@ final class DecodeState {
                     reservation, "priority claim must settle before generic terminal ownership");
         }
         if (hasExactIncomingAttemptLocked(reservation)) {
-            throw terminalInvariant(reservation,
-                    "priority attempt still owns the exact incoming reservation");
+            throw terminalInvariant(
+                    reservation, "priority attempt still owns the exact incoming reservation");
         }
 
         boolean changed = false;
@@ -433,13 +447,10 @@ final class DecodeState {
         }
 
         if (isExactReservation(request, reservation)) {
-            if (request.confirmed()
-                    && removeConfirmedExactLocked(requestId, request)) {
-                confirmedEngineOwnedCount = Math.max(
-                        0, confirmedEngineOwnedCount - 1);
+            if (request.confirmed() && removeConfirmedExactLocked(requestId, request)) {
+                confirmedEngineOwnedCount = Math.max(0, confirmedEngineOwnedCount - 1);
                 changed = true;
-            } else if (!request.confirmed()
-                    && removeShadowExactLocked(requestId, request)) {
+            } else if (!request.confirmed() && removeShadowExactLocked(requestId, request)) {
                 changed = true;
             }
         }
@@ -452,15 +463,16 @@ final class DecodeState {
         }
 
         if (hasExactOwnerLocked(reservation)) {
-            throw terminalInvariant(reservation,
-                    "exact accounting remains after authoritative settlement");
+            throw terminalInvariant(
+                    reservation, "exact accounting remains after authoritative settlement");
         }
         return changed;
     }
 
     private boolean settleUntrackedWorkerTerminalLocked(String requestId) {
         DecodeRequestState confirmed = confirmedRequest(requestId);
-        if (confirmed == null || confirmed.reservationToken() > 0L
+        if (confirmed == null
+                || confirmed.reservationToken() > 0L
                 || !removeConfirmedExactLocked(requestId, confirmed)) {
             return false;
         }
@@ -500,39 +512,37 @@ final class DecodeState {
     }
 
     private static IllegalStateException localReleaseInvariant(
-            ReservationHandle reservation,
-            String detail) {
+            ReservationHandle reservation, String detail) {
         return new IllegalStateException(
                 "Illegal Decode local release: requestId="
                         + reservation.requestId()
                         + ", reservationToken="
                         + reservation.reservationToken()
-                        + ", detail=" + detail);
+                        + ", detail="
+                        + detail);
     }
 
     private static IllegalStateException terminalInvariant(
-            ReservationHandle reservation,
-            String detail) {
+            ReservationHandle reservation, String detail) {
         return new IllegalStateException(
                 "Illegal Decode authoritative settlement: requestId="
                         + reservation.requestId()
                         + ", reservationToken="
                         + reservation.reservationToken()
-                        + ", detail=" + detail);
+                        + ", detail="
+                        + detail);
     }
 
     // Dispatch: queue membership, permit acquisition, handoff and rollback.
 
-    boolean markQueued(
-            ReservationHandle reservation) {
+    boolean markQueued(ReservationHandle reservation) {
         if (reservation == null) {
             throw new IllegalArgumentException(
                     "Decode reservation is required for queued transition");
         }
         admissionLock.lock();
         try {
-            if (reservation.endpointGenerationId()
-                    != status.getGenerationId()) {
+            if (reservation.endpointGenerationId() != status.getGenerationId()) {
                 return false;
             }
             String requestId = reservation.requestId();
@@ -579,8 +589,7 @@ final class DecodeState {
     }
 
     DispatchAcquisition acquireDispatchPermit(
-            ReservationHandle handle,
-            AdmissionCapacity capacity) {
+            ReservationHandle handle, AdmissionCapacity capacity) {
         admissionLock.lock();
         try {
             DecodeRequestState reservation = requestState(handle.requestId());
@@ -599,17 +608,18 @@ final class DecodeState {
                 return new DispatchAcquisition(EngineDispatchPermitAcquireStatus.NOT_QUEUED, null);
             }
             if (reservation.dispatchPermit() != null) {
-                return new DispatchAcquisition(EngineDispatchPermitAcquireStatus.ALREADY_ACQUIRED, null);
+                return new DispatchAcquisition(
+                        EngineDispatchPermitAcquireStatus.ALREADY_ACQUIRED, null);
             }
             if (isEngineDispatchCapacityFullSnapshot(
                     reservation, capacity, status.committedWorkerStatus().fields())) {
-                return new DispatchAcquisition(EngineDispatchPermitAcquireStatus.CAPACITY_FULL, null);
+                return new DispatchAcquisition(
+                        EngineDispatchPermitAcquireStatus.CAPACITY_FULL, null);
             }
 
-            DispatchLease permit = installEngineDispatchPermitLocked(
-                    handle.requestId(), reservation);
-            return new DispatchAcquisition(
-                    EngineDispatchPermitAcquireStatus.ACQUIRED, permit);
+            DispatchLease permit =
+                    installEngineDispatchPermitLocked(handle.requestId(), reservation);
+            return new DispatchAcquisition(EngineDispatchPermitAcquireStatus.ACQUIRED, permit);
         } finally {
             admissionLock.unlock();
         }
@@ -629,7 +639,9 @@ final class DecodeState {
     DispatchResult dispatch(DispatchLease permit, DispatchOutcome outcome) {
         java.util.Objects.requireNonNull(permit, "permit");
         java.util.Objects.requireNonNull(outcome, "outcome");
-        if (outcome == DispatchOutcome.ENGINE_OWNED) { return dispatchToEngine(permit); }
+        if (outcome == DispatchOutcome.ENGINE_OWNED) {
+            return dispatchToEngine(permit);
+        }
         admissionLock.lock();
         try {
             if (permit.retiredByEndpoint) {
@@ -646,8 +658,7 @@ final class DecodeState {
         }
     }
 
-    private DispatchResult dispatchToEngine(
-            DispatchLease permit) {
+    private DispatchResult dispatchToEngine(DispatchLease permit) {
         EngineDispatchPermitTransferStatus transferStatus;
         boolean capacityIncreased;
         admissionLock.lock();
@@ -694,12 +705,10 @@ final class DecodeState {
 
     private boolean removeEngineDispatchPermitLocked(String requestId) {
         DecodeRequestState reservation = shadowReservation(requestId);
-        return reservation != null
-                && removeEngineDispatchPermitLocked(reservation);
+        return reservation != null && removeEngineDispatchPermitLocked(reservation);
     }
 
-    private boolean removeEngineDispatchPermitLocked(
-            DecodeRequestState reservation) {
+    private boolean removeEngineDispatchPermitLocked(DecodeRequestState reservation) {
         DispatchLease removed = reservation.clearDispatchPermit();
         if (removed == null) {
             return false;
@@ -713,21 +722,14 @@ final class DecodeState {
     }
 
     boolean shouldRetryDispatch(
-            String requestId,
-            AdmissionCapacity capacity,
-            boolean schedulingReady) {
+            String requestId, AdmissionCapacity capacity, boolean schedulingReady) {
         DecodeRequestState candidate = shadowReservation(requestId);
-        if (candidate == null
-                || !candidate.queued()
-                || candidate.dispatchPermit() != null) {
+        if (candidate == null || !candidate.queued() || candidate.dispatchPermit() != null) {
             return true;
         }
-        WorkerStatus.CommittedWorkerStatus committed =
-                status.committedWorkerStatus();
-        return schedulingReady && !isEngineDispatchCapacityFullSnapshot(
-                candidate,
-                capacity,
-                committed.fields());
+        WorkerStatus.CommittedWorkerStatus committed = status.committedWorkerStatus();
+        return schedulingReady
+                && !isEngineDispatchCapacityFullSnapshot(candidate, capacity, committed.fields());
     }
 
     private boolean isEngineDispatchCapacityFullSnapshot(
@@ -745,10 +747,8 @@ final class DecodeState {
     }
 
     private int engineDispatchHardGateUsageLocked() {
-        int engineFacingInflight = Math.max(0,
-                reservedRequestCount.get() - queuedPhaseCount.get());
-        return confirmedEngineOwnedCount + engineFacingInflight
-                + activeEngineDispatchPermitCount;
+        int engineFacingInflight = Math.max(0, reservedRequestCount.get() - queuedPhaseCount.get());
+        return confirmedEngineOwnedCount + engineFacingInflight + activeEngineDispatchPermitCount;
     }
 
     private CapacityUsage dispatchCapacityUsage(WorkerStatus.EngineObservation fields) {
@@ -770,8 +770,7 @@ final class DecodeState {
                 engineFacingKvUsed(fields));
     }
 
-    private long engineFacingKvUsed(
-            WorkerStatus.EngineObservation fields) {
+    private long engineFacingKvUsed(WorkerStatus.EngineObservation fields) {
         long totalCap = fields.totalKvCacheTokens();
         long avail = fields.availableKvCacheTokens();
         long reportedUsed = totalCap > 0 ? Math.max(0, totalCap - avail) : 0;
@@ -795,9 +794,9 @@ final class DecodeState {
         return confirmedEngineOwnedCount + Math.max(0, inflight - queued);
     }
 
-    record DispatchAcquisition(EngineDispatchPermitAcquireStatus status, DispatchLease permit) { }
+    record DispatchAcquisition(EngineDispatchPermitAcquireStatus status, DispatchLease permit) {}
 
-    record DispatchResult(EngineDispatchPermitTransferStatus status, boolean capacityReleased) { }
+    record DispatchResult(EngineDispatchPermitTransferStatus status, boolean capacityReleased) {}
 
     static final class DispatchLease {
         private final String requestId;
@@ -821,9 +820,9 @@ final class DecodeState {
             AdmissionCapacity capacity) {
         admissionLock.lock();
         try {
-            if (victims == null || victims.isEmpty()
-                    || !requestIdAvailableForReservationLocked(
-                            incomingRequestId)) {
+            if (victims == null
+                    || victims.isEmpty()
+                    || !requestIdAvailableForReservationLocked(incomingRequestId)) {
                 return false;
             }
             Set<String> uniqueVictims = new HashSet<>(victims.size());
@@ -836,8 +835,7 @@ final class DecodeState {
                     return false;
                 }
                 DecodeRequestState held = shadowReservation(victim.requestId());
-                DispatchLease permit = held == null
-                        ? null : held.dispatchPermit();
+                DispatchLease permit = held == null ? null : held.dispatchPermit();
                 if (!isExactReservation(held, victim)
                         || !held.queued()
                         || hasEngineLifecycleReservationExactLocked(victim)
@@ -861,8 +859,7 @@ final class DecodeState {
                 DecodeRequestState exact = shadowReservation(victim.requestId());
                 if (!removeShadowExactLocked(victim.requestId(), exact)) {
                     throw localReleaseInvariant(
-                            victim,
-                            "validated victim changed while admissionLock was held");
+                            victim, "validated victim changed while admissionLock was held");
                 }
             }
             reserveLocked(incomingRequestId, kvTokens, kvBudgetTokens, priority);
@@ -922,23 +919,20 @@ final class DecodeState {
                 if (!isExactReservation(request, victim)) {
                     return PreemptionBeginResult.VICTIM_GONE;
                 }
-                DispatchLease dispatchPermit = request.confirmed()
-                        ? null : request.dispatchPermit();
+                DispatchLease dispatchPermit =
+                        request.confirmed() ? null : request.dispatchPermit();
                 if (dispatchPermit != null) {
                     return PreemptionBeginResult.VICTIM_GONE;
                 }
                 if (!request.confirmed() && !request.queued()) {
-                    if (request.priority() <= 0
-                            || request.priority() >= incomingPriority) {
+                    if (request.priority() <= 0 || request.priority() >= incomingPriority) {
                         return PreemptionBeginResult.INVALID_PRIORITY;
                     }
                     owners.put(victimId, ClaimOwner.SHADOW_IN_FLIGHT);
                     exactVictims.put(victimId, victim);
 
-                } else if (request.confirmed()
-                        && request.phase().isEngineConfirmed()) {
-                    if (request.priority() <= 0
-                            || request.priority() >= incomingPriority) {
+                } else if (request.confirmed() && request.phase().isEngineConfirmed()) {
+                    if (request.priority() <= 0 || request.priority() >= incomingPriority) {
                         return PreemptionBeginResult.INVALID_PRIORITY;
                     }
                     owners.put(victimId, ClaimOwner.ENGINE_CONFIRMED);
@@ -981,12 +975,13 @@ final class DecodeState {
                             incomingKvBudgetTokens, incomingPriority);
             EndpointPreemptionAttempt preparedAttempt = null;
             try {
-                preparedAttempt = new EndpointPreemptionAttempt(
-                        incomingRequestId,
-                        incomingReservation.reservationToken(),
-                        exactVictims);
-                EndpointPreemptionAttempt previous = preemptionAttempts.put(
-                        attemptToken, preparedAttempt);
+                preparedAttempt =
+                        new EndpointPreemptionAttempt(
+                                incomingRequestId,
+                                incomingReservation.reservationToken(),
+                                exactVictims);
+                EndpointPreemptionAttempt previous =
+                        preemptionAttempts.put(attemptToken, preparedAttempt);
                 if (previous != null) {
                     throw new IllegalStateException(
                             "priority attempt appeared while admissionLock was held");
@@ -1006,8 +1001,7 @@ final class DecodeState {
                 for (Map.Entry<String, PreemptionClaim> claim : preparedClaims.entrySet()) {
                     removePreemptionClaimLocked(claim.getKey(), claim.getValue());
                 }
-                DecodeRequestState incoming =
-                        shadowReservation(incomingRequestId);
+                DecodeRequestState incoming = shadowReservation(incomingRequestId);
                 if (isExactReservation(incoming, incomingReservation)) {
                     removeShadowExactLocked(incomingRequestId, incoming);
                 }
@@ -1088,23 +1082,34 @@ final class DecodeState {
             }
             if (update.kind() == PreemptionUpdate.Kind.CANCEL_REPLY) {
                 PreemptionClaim claim = preemptionClaim(update.requestId());
-                if (claim == null || claim.attemptToken != attemptToken
-                        || !claim.phase.canTransitionTo(update.phase())) { return false; }
+                if (claim == null
+                        || claim.attemptToken != attemptToken
+                        || !claim.phase.canTransitionTo(update.phase())) {
+                    return false;
+                }
                 claim.phase = update.phase();
                 admissionVersion.incrementAndGet();
                 return true;
             }
             ReservationHandle victim = update.reservation();
-            if (victim.endpointGenerationId() != status.getGenerationId()) { return false; }
+            if (victim.endpointGenerationId() != status.getGenerationId()) {
+                return false;
+            }
             PreemptionClaim claim = exactPreemptionClaimLocked(attemptToken, victim);
-            if (claim == null) { return false; }
+            if (claim == null) {
+                return false;
+            }
             return switch (update.kind()) {
-                case CANCELED -> claim.phase.acceptsPriorityTerminal()
-                        && settlePriorityClaimTerminalLocked(attemptToken, victim, claim);
-                case REQUEST_FENCED -> claim.phase.acceptsRequestFenced()
-                        && settlePriorityClaimTerminalLocked(attemptToken, victim, claim);
+                case CANCELED ->
+                        claim.phase.acceptsPriorityTerminal()
+                                && settlePriorityClaimTerminalLocked(attemptToken, victim, claim);
+                case REQUEST_FENCED ->
+                        claim.phase.acceptsRequestFenced()
+                                && settlePriorityClaimTerminalLocked(attemptToken, victim, claim);
                 case ACTIVE, FINISHED -> observeVictimLocked(victim, claim, update.kind());
-                default -> throw new IllegalStateException("Unhandled preemption update: " + update.kind());
+                default ->
+                        throw new IllegalStateException(
+                                "Unhandled preemption update: " + update.kind());
             };
         } finally {
             admissionLock.unlock();
@@ -1120,25 +1125,25 @@ final class DecodeState {
             String victimId = victim.requestId();
             PreemptionClaim claim = exactPreemptionClaimLocked(attemptToken, victim);
             if (claim == null
-                    || !claim.phase.canTransitionTo(
-                            PreemptionCancelPhase.CANCEL_IN_FLIGHT)) {
+                    || !claim.phase.canTransitionTo(PreemptionCancelPhase.CANCEL_IN_FLIGHT)) {
                 return false;
             }
         }
-        for (ReservationHandle victim
-                : attempt.remainingVictims.values()) {
-            preemptionClaim(victim.requestId()).phase =
-                    PreemptionCancelPhase.CANCEL_IN_FLIGHT;
+        for (ReservationHandle victim : attempt.remainingVictims.values()) {
+            preemptionClaim(victim.requestId()).phase = PreemptionCancelPhase.CANCEL_IN_FLIGHT;
         }
         admissionVersion.incrementAndGet();
         return true;
     }
 
-    private boolean observeVictimLocked(ReservationHandle victim, PreemptionClaim claim,
-                                        PreemptionUpdate.Kind evidence) {
+    private boolean observeVictimLocked(
+            ReservationHandle victim, PreemptionClaim claim, PreemptionUpdate.Kind evidence) {
         boolean finished = evidence == PreemptionUpdate.Kind.FINISHED;
-        if (finished ? !claim.phase.requiresOrdinaryReconciliation()
-                : claim.phase != PreemptionCancelPhase.NOT_FOUND_STALE) { return false; }
+        if (finished
+                ? !claim.phase.requiresOrdinaryReconciliation()
+                : claim.phase != PreemptionCancelPhase.NOT_FOUND_STALE) {
+            return false;
+        }
         releaseHeldKv(claim);
         removePreemptionClaimLocked(victim.requestId(), claim);
         if (finished) {
@@ -1161,16 +1166,12 @@ final class DecodeState {
                 request == null || request.confirmed() ? null : request.dispatchPermit();
         if ((request != null && !isExactReservation(request, reservation))
                 || (dispatchPermit != null
-                    && !isExactReservation(
-                            dispatchPermit.reservation, reservation))
+                        && !isExactReservation(dispatchPermit.reservation, reservation))
                 || hasExactIncomingAttemptLocked(reservation)) {
             return false;
         }
-        EndpointPreemptionAttempt attempt =
-                preemptionAttempts.get(attemptToken);
-        if (attempt != null
-                && !reservation.equals(
-                        attempt.remainingVictims.get(requestId))) {
+        EndpointPreemptionAttempt attempt = preemptionAttempts.get(attemptToken);
+        if (attempt != null && !reservation.equals(attempt.remainingVictims.get(requestId))) {
             return false;
         }
 
@@ -1201,11 +1202,16 @@ final class DecodeState {
         admissionLock.lock();
         try {
             EndpointPreemptionAttempt attempt = preemptionAttempts.get(attemptToken);
-            if (attempt == null) { return false; }
+            if (attempt == null) {
+                return false;
+            }
             if (decision == PreemptionDecision.COMMIT) {
                 DecodeRequestState incoming = shadowReservation(attempt.incomingRequestId);
-                if (incoming == null || incoming.reservationToken() != attempt.incomingReservationToken
-                        || !attempt.remainingVictims.isEmpty()) { return false; }
+                if (incoming == null
+                        || incoming.reservationToken() != attempt.incomingReservationToken
+                        || !attempt.remainingVictims.isEmpty()) {
+                    return false;
+                }
             } else {
                 releaseLocked(attempt.incomingRequestId);
                 for (ReservationHandle victim : attempt.remainingVictims.values()) {
@@ -1243,8 +1249,10 @@ final class DecodeState {
         DecodeRequestState state = requestState(reservation.requestId());
         PreemptionClaim claim = state == null ? null : state.preemptionClaim;
         return claim != null
-                && claim.attemptToken == attemptToken
-                && isExactReservation(state, reservation) ? claim : null;
+                        && claim.attemptToken == attemptToken
+                        && isExactReservation(state, reservation)
+                ? claim
+                : null;
     }
 
     private boolean removePreemptionClaimLocked(String requestId, PreemptionClaim expected) {
@@ -1257,8 +1265,7 @@ final class DecodeState {
         return true;
     }
 
-    private boolean hasExactIncomingAttemptLocked(
-            ReservationHandle reservation) {
+    private boolean hasExactIncomingAttemptLocked(ReservationHandle reservation) {
         for (EndpointPreemptionAttempt attempt : preemptionAttempts.values()) {
             if (java.util.Objects.equals(attempt.incomingRequestId, reservation.requestId())
                     && attempt.incomingReservationToken == reservation.reservationToken()) {
@@ -1392,9 +1399,11 @@ final class DecodeState {
         admissionLock.lock();
         try {
             DecodeRoutingView before = routingViewLocked();
-            List<WorkerStatusFact> facts = doCalibrate(observation.engine(), observation.finishedTasks());
+            List<WorkerStatusFact> facts =
+                    doCalibrate(observation.engine(), observation.finishedTasks());
             status.publishPreparedStatus(prepared);
-            return new CalibrationResult(List.copyOf(facts), placementCapacityImproved(before, routingViewLocked()));
+            return new CalibrationResult(
+                    List.copyOf(facts), placementCapacityImproved(before, routingViewLocked()));
         } finally {
             admissionLock.unlock();
         }
@@ -1404,7 +1413,8 @@ final class DecodeState {
         admissionLock.lock();
         try {
             if (!doCalibrate(observation.engine(), observation.finishedTasks()).isEmpty()) {
-                throw new IllegalStateException("Private Decode candidate produced locally-owned status facts");
+                throw new IllegalStateException(
+                        "Private Decode candidate produced locally-owned status facts");
             }
         } finally {
             admissionLock.unlock();
@@ -1450,13 +1460,11 @@ final class DecodeState {
         int actualConfirmed = 0;
         int retainedConfirmed = 0;
         long now = System.currentTimeMillis();
-        for (WorkerStatus.TaskObservation task
-                : engine.runningTaskList().values()) {
+        for (WorkerStatus.TaskObservation task : engine.runningTaskList().values()) {
             TaskPhase phase = task.phase();
             String requestId = task.requestId();
             DecodeRequestState current = requestState(requestId);
-            if (terminalNow.contains(requestId)
-                    || current != null && current.settledAtMs != 0L) {
+            if (terminalNow.contains(requestId) || current != null && current.settledAtMs != 0L) {
                 continue;
             }
             // Membership, allocation/running evidence and terminal evidence are distinct.
@@ -1492,7 +1500,9 @@ final class DecodeState {
                     // Preserve the exact token and last confirmed resource phase. This is a
                     // conservative ownership slot, not a claim about current GPU execution.
                     current.refresh(current.phase(), now);
-                    if (current.preemptionClaim == null) { retainedConfirmed++; }
+                    if (current.preemptionClaim == null) {
+                        retainedConfirmed++;
+                    }
                     // Claims are counted/held below when allocation evidence is absent.
                 }
                 ReservationHandle active = workerStatusHandleLocked(requestId);
@@ -1518,21 +1528,19 @@ final class DecodeState {
             PreemptionClaim claim = preemptionClaim(requestId);
             if (claim != null) {
                 if (terminal != null
-                        && settlePriorityClaimTerminalLocked(
-                                claim.attemptToken, terminal, claim)) {
-                    facts.add(WorkerStatusFact.terminal(
-                            terminal, task.errorCode()));
+                        && settlePriorityClaimTerminalLocked(claim.attemptToken, terminal, claim)) {
+                    facts.add(WorkerStatusFact.terminal(terminal, task.errorCode()));
                 } else {
                     logger.error(
                             "Decode terminal did not match its exact priority claim: "
                                     + "request_id={} generation={}",
-                            requestId, status.getGenerationId());
+                            requestId,
+                            status.getGenerationId());
                 }
                 continue;
             }
             if (terminal != null) {
-                facts.add(WorkerStatusFact.terminal(
-                        terminal, task.errorCode()));
+                facts.add(WorkerStatusFact.terminal(terminal, task.errorCode()));
             }
             if (terminal != null) {
                 settleAuthoritativeTerminalLocked(terminal, false, now);
@@ -1582,18 +1590,17 @@ final class DecodeState {
                 rememberSettledLocked(requestId, now);
             }
         }
-        this.confirmedEngineOwnedCount = actualConfirmed + retainedConfirmed + syntheticallyHeldSlots;
+        this.confirmedEngineOwnedCount =
+                actualConfirmed + retainedConfirmed + syntheticallyHeldSlots;
 
         return facts;
     }
 
-    private void trackConfirmed(
-            WorkerStatus.TaskObservation task,
-            TaskPhase phase,
-            long now) {
-        DecodeTaskPhase layer = phase == TaskPhase.KV_ALLOCATED
-                ? DecodeTaskPhase.ACCEPTED_NOT_RUNNING
-                : DecodeTaskPhase.RUNNING;
+    private void trackConfirmed(WorkerStatus.TaskObservation task, TaskPhase phase, long now) {
+        DecodeTaskPhase layer =
+                phase == TaskPhase.KV_ALLOCATED
+                        ? DecodeTaskPhase.ACCEPTED_NOT_RUNNING
+                        : DecodeTaskPhase.RUNNING;
         DecodeRequestState tracked = requestState(task.requestId());
         if (tracked != null) {
             clearReturnedPreemptionAttemptLocked(tracked);
@@ -1617,21 +1624,17 @@ final class DecodeState {
         if (reservationToken <= 0L) {
             return null;
         }
-        return new ReservationHandle(
-                status.getGenerationId(),
-                requestId,
-                reservationToken);
+        return new ReservationHandle(status.getGenerationId(), requestId, reservationToken);
     }
 
     private static boolean placementCapacityImproved(
-            DecodeRoutingView before,
-            DecodeRoutingView after) {
+            DecodeRoutingView before, DecodeRoutingView after) {
         return after.engineLoad() < before.engineLoad()
                 || after.realKvAvailable() > before.realKvAvailable()
                 || after.realKvUsed() < before.realKvUsed();
     }
 
-    record CalibrationResult(List<WorkerStatusFact> facts, boolean capacityImproved) { }
+    record CalibrationResult(List<WorkerStatusFact> facts, boolean capacityImproved) {}
 
     // Generation cleanup: drain resources and expire orphan/history records.
 
@@ -1640,7 +1643,9 @@ final class DecodeState {
         try {
             for (DecodeRequestState reservation : decodeRequests.values()) {
                 DispatchLease permit = reservation.dispatchPermit();
-                if (permit != null) { permit.retiredByEndpoint = true; }
+                if (permit != null) {
+                    permit.retiredByEndpoint = true;
+                }
             }
             List<ReservationHandle> retired = retireGenerationOwnershipLocked();
             admissionVersion.incrementAndGet();
@@ -1654,13 +1659,14 @@ final class DecodeState {
         Set<ReservationHandle> owners = new HashSet<>();
         long generationId = status.getGenerationId();
 
-        decodeRequests.forEach((requestId, reservation) ->
-                addRetiredOwner(
-                        owners, generationId, requestId,
-                        reservation.reservationToken()));
+        decodeRequests.forEach(
+                (requestId, reservation) ->
+                        addRetiredOwner(
+                                owners, generationId, requestId, reservation.reservationToken()));
         for (EndpointPreemptionAttempt attempt : preemptionAttempts.values()) {
             addRetiredOwner(
-                    owners, generationId,
+                    owners,
+                    generationId,
                     attempt.incomingRequestId,
                     attempt.incomingReservationToken);
             for (ReservationHandle victim : attempt.remainingVictims.values()) {
@@ -1668,7 +1674,8 @@ final class DecodeState {
                     logger.error(
                             "Decode retirement ignored a priority victim from another generation: "
                                     + "request_id={} expected_generation={} actual_generation={}",
-                            victim.requestId(), generationId,
+                            victim.requestId(),
+                            generationId,
                             victim.endpointGenerationId());
                     continue;
                 }
@@ -1710,8 +1717,7 @@ final class DecodeState {
             String requestId,
             long reservationToken) {
         if (reservationToken > 0L) {
-            owners.add(new ReservationHandle(
-                    generationId, requestId, reservationToken));
+            owners.add(new ReservationHandle(generationId, requestId, reservationToken));
         }
     }
 
@@ -1722,8 +1728,7 @@ final class DecodeState {
         try {
             // Scheduler-owned requests expire through their exact local lease.
             // This pass only sweeps endpoint orphans.
-            evicted = evictExpiredInflightLocked(
-                    ttlMs, retainForSchedulerCleanup);
+            evicted = evictExpiredInflightLocked(ttlMs, retainForSchedulerCleanup);
             long cutoff = System.currentTimeMillis() - ttlMs;
             int trackedPurged = 0;
             java.util.Iterator<Map.Entry<String, DecodeRequestState>> trackedEvictIt =
@@ -1739,8 +1744,7 @@ final class DecodeState {
                 }
             }
             if (trackedPurged > 0) {
-                confirmedEngineOwnedCount = Math.max(
-                        0, confirmedEngineOwnedCount - trackedPurged);
+                confirmedEngineOwnedCount = Math.max(0, confirmedEngineOwnedCount - trackedPurged);
             }
             boolean expiredWaitingRequestsRemoved =
                     decodeRequests
@@ -1766,8 +1770,7 @@ final class DecodeState {
                     || settledTerminalRecordsPurged) {
                 admissionVersion.incrementAndGet();
             }
-            capacityChanged = evicted > 0 || trackedPurged > 0
-                    || settledTerminalRecordsPurged;
+            capacityChanged = evicted > 0 || trackedPurged > 0 || settledTerminalRecordsPurged;
         } finally {
             admissionLock.unlock();
         }
@@ -1808,17 +1811,21 @@ final class DecodeState {
         return true;
     }
 
-    record CleanupResult(int expiredReservations, boolean capacityReleased) { }
+    record CleanupResult(int expiredReservations, boolean capacityReleased) {}
 
     // Read-only views: capture, cache and metrics.
 
     DecodeEndpoint.AdmissionSummary admissionSummary() {
         DecodeEndpoint.AdmissionSummary cached = admissionSummaryCache;
-        if (isCurrentAdmissionSummary(cached)) { return cached; }
+        if (isCurrentAdmissionSummary(cached)) {
+            return cached;
+        }
         admissionLock.lock();
         try {
             cached = admissionSummaryCache;
-            if (isCurrentAdmissionSummary(cached)) { return cached; }
+            if (isCurrentAdmissionSummary(cached)) {
+                return cached;
+            }
             DecodeRoutingView routing = routingViewLocked();
             long[] requests = new long[PriorityNormalizer.MAX_PRIORITY + 1];
             long[] requiredKv = new long[PriorityNormalizer.MAX_PRIORITY + 1];
@@ -1849,8 +1856,10 @@ final class DecodeState {
                             saturatedAddNonNegative(engineKvBudget[priority], budgetTokens);
                 }
             }
-            CapacityRelease[] placementOccupancy = new CapacityRelease[PriorityNormalizer.MAX_PRIORITY + 1];
-            CapacityRelease[] engineOccupancy = new CapacityRelease[PriorityNormalizer.MAX_PRIORITY + 1];
+            CapacityRelease[] placementOccupancy =
+                    new CapacityRelease[PriorityNormalizer.MAX_PRIORITY + 1];
+            CapacityRelease[] engineOccupancy =
+                    new CapacityRelease[PriorityNormalizer.MAX_PRIORITY + 1];
             for (int priority = 0; priority < placementOccupancy.length; priority++) {
                 placementOccupancy[priority] =
                         requests[priority] == 0
@@ -1867,7 +1876,9 @@ final class DecodeState {
                                         engineRequiredKv[priority],
                                         engineKvBudget[priority]);
             }
-            admissionSummaryCache = new DecodeEndpoint.AdmissionSummary(routing, placementOccupancy, engineOccupancy);
+            admissionSummaryCache =
+                    new DecodeEndpoint.AdmissionSummary(
+                            routing, placementOccupancy, engineOccupancy);
             return admissionSummaryCache;
         } finally {
             admissionLock.unlock();
@@ -2006,16 +2017,14 @@ final class DecodeState {
         }
         admissionLock.lock();
         try {
-            WorkerStatus.CommittedWorkerStatus committed =
-                    status.committedWorkerStatus();
+            WorkerStatus.CommittedWorkerStatus committed = status.committedWorkerStatus();
             topology = status.topologySnapshot();
             version = admissionVersion.get();
             cached = routingViewCache;
             if (routingViewMatches(cached, address, version, topology)) {
                 return cached;
             }
-            DecodeRoutingView routing = routingViewLocked(
-                    address, topology, committed, version);
+            DecodeRoutingView routing = routingViewLocked(address, topology, committed, version);
             routingViewCache = routing;
             return routing;
         } finally {
@@ -2108,8 +2117,7 @@ final class DecodeState {
                 oldest = Math.min(oldest, request.createdAtMs());
             }
         }
-        return oldest == Long.MAX_VALUE
-                ? 0L : Math.max(0L, nowMs - oldest);
+        return oldest == Long.MAX_VALUE ? 0L : Math.max(0L, nowMs - oldest);
     }
 
     record Stats(
@@ -2132,9 +2140,9 @@ final class DecodeState {
 
     private DecodeRequestState shadowReservation(String requestId) {
         DecodeRequestState state = requestState(requestId);
-        return state != null
-                && state.phase() == DecodeTaskPhase.ENGINE_MAY_HAVE_SEEN
-                ? state : null;
+        return state != null && state.phase() == DecodeTaskPhase.ENGINE_MAY_HAVE_SEEN
+                ? state
+                : null;
     }
 
     private DecodeRequestState confirmedRequest(String requestId) {
@@ -2143,26 +2151,19 @@ final class DecodeState {
     }
 
     private static boolean isExactReservation(
-            DecodeRequestState current,
-            ReservationHandle reservation) {
-        return current != null
-                && current.reservationToken()
-                        == reservation.reservationToken();
+            DecodeRequestState current, ReservationHandle reservation) {
+        return current != null && current.reservationToken() == reservation.reservationToken();
     }
 
     private boolean hasExactOwnerLocked(ReservationHandle reservation) {
         String requestId = reservation.requestId();
         DecodeRequestState state = requestState(requestId);
-        return isExactReservation(state, reservation)
-                || hasExactIncomingAttemptLocked(reservation);
+        return isExactReservation(state, reservation) || hasExactIncomingAttemptLocked(reservation);
     }
 
-    private boolean hasEngineLifecycleReservationExactLocked(
-            ReservationHandle reservation) {
-        DecodeRequestState current = shadowReservation(
-                reservation.requestId());
-        return isExactReservation(current, reservation)
-                && current.engineLifecycleOwned;
+    private boolean hasEngineLifecycleReservationExactLocked(ReservationHandle reservation) {
+        DecodeRequestState current = shadowReservation(reservation.requestId());
+        return isExactReservation(current, reservation) && current.engineLifecycleOwned;
     }
 
     private void pruneRequestStateLocked(String requestId, DecodeRequestState state) {
@@ -2202,10 +2203,13 @@ final class DecodeState {
          * Request phase used for capacity accounting; null excludes the request from capacity.
          */
         private volatile DecodeTaskPhase phase = DecodeTaskPhase.ENGINE_MAY_HAVE_SEEN;
+
         private long lastSeenAtMs;
         private boolean queued;
+
         /** True after dispatch crosses the Master rollback boundary. */
         private boolean engineLifecycleOwned;
+
         private DispatchLease dispatchPermit;
 
         /** Incoming instruction owner until dispatch crosses the rollback boundary. */
@@ -2213,6 +2217,7 @@ final class DecodeState {
 
         /** Current protocol owners for this exact request generation. */
         private PreemptionClaim preemptionClaim;
+
         /** Non-zero while stale WorkerStatus must not resurrect this request id. */
         private long settledAtMs;
 
@@ -2228,8 +2233,7 @@ final class DecodeState {
         DecodeRequestState(
                 long kvTokens, long kvBudgetTokens, int priority, long reservationToken) {
             if (reservationToken < 0L) {
-                throw new IllegalArgumentException(
-                        "reservationToken must be non-negative");
+                throw new IllegalArgumentException("reservationToken must be non-negative");
             }
             this.kvTokens = kvTokens;
             this.kvBudgetTokens = kvBudgetTokens;
@@ -2249,21 +2253,44 @@ final class DecodeState {
         CapacityRelease capacityRelease() {
             return new CapacityRelease(1L, kvTokens, kvBudgetTokens);
         }
-        long createdAtMs() { return createdAtMs; }
-        int priority() { return priority; }
-        long reservationToken() { return reservationToken; }
-        boolean queued() { return queued; }
-        boolean ownsRequest() { return phase != null; }
-        boolean confirmed() { return phase != null
-                && phase != DecodeTaskPhase.ENGINE_MAY_HAVE_SEEN; }
-        DecodeTaskPhase phase() { return phase; }
-        boolean priorityKnown() { return priorityKnown; }
-        long lastSeenAtMs() { return lastSeenAtMs; }
 
-        void confirm(
-                long engineKvTokens,
-                DecodeTaskPhase phase,
-                long observedAtMs) {
+        long createdAtMs() {
+            return createdAtMs;
+        }
+
+        int priority() {
+            return priority;
+        }
+
+        long reservationToken() {
+            return reservationToken;
+        }
+
+        boolean queued() {
+            return queued;
+        }
+
+        boolean countsTowardCapacity() {
+            return phase != null;
+        }
+
+        boolean confirmed() {
+            return phase != null && phase != DecodeTaskPhase.ENGINE_MAY_HAVE_SEEN;
+        }
+
+        DecodeTaskPhase phase() {
+            return phase;
+        }
+
+        boolean priorityKnown() {
+            return priorityKnown;
+        }
+
+        long lastSeenAtMs() {
+            return lastSeenAtMs;
+        }
+
+        void confirm(long engineKvTokens, DecodeTaskPhase phase, long observedAtMs) {
             kvTokens = Math.max(0L, engineKvTokens);
             kvBudgetTokens = kvTokens;
             this.phase = java.util.Objects.requireNonNull(phase, "phase");
@@ -2275,11 +2302,8 @@ final class DecodeState {
         }
 
         static DecodeRequestState untrackedConfirmed(
-                long engineKvTokens,
-                DecodeTaskPhase phase,
-                long observedAtMs) {
-            DecodeRequestState state = new DecodeRequestState(
-                    0L, 0L, DEFAULT_PRIORITY, 0L);
+                long engineKvTokens, DecodeTaskPhase phase, long observedAtMs) {
+            DecodeRequestState state = new DecodeRequestState(0L, 0L, DEFAULT_PRIORITY, 0L);
             state.priorityKnown = false;
             state.confirm(engineKvTokens, phase, observedAtMs);
             return state;
@@ -2287,14 +2311,15 @@ final class DecodeState {
 
         void refresh(DecodeTaskPhase phase, long observedAtMs) {
             if (!confirmed()) {
-                throw new IllegalStateException(
-                        "cannot refresh an unconfirmed Decode request");
+                throw new IllegalStateException("cannot refresh an unconfirmed Decode request");
             }
             this.phase = java.util.Objects.requireNonNull(phase, "phase");
             lastSeenAtMs = observedAtMs;
         }
 
-        long lastSeenMs() { return lastSeenAtMs; }
+        long lastSeenMs() {
+            return lastSeenAtMs;
+        }
 
         boolean markQueued() {
             if (queued) {
@@ -2312,7 +2337,9 @@ final class DecodeState {
             return true;
         }
 
-        DispatchLease dispatchPermit() { return dispatchPermit; }
+        DispatchLease dispatchPermit() {
+            return dispatchPermit;
+        }
 
         void installDispatchPermit(DispatchLease permit) {
             if (dispatchPermit != null) {
@@ -2328,9 +2355,13 @@ final class DecodeState {
             return current;
         }
 
-        long releasableKvTokens() { return kvTokens; }
+        long releasableKvTokens() {
+            return kvTokens;
+        }
 
-        boolean hasProtocolOwner() { return preemptionClaim != null; }
+        boolean hasProtocolOwner() {
+            return preemptionClaim != null;
+        }
 
         /**
          * Excludes this request from capacity accounting while preserving its ID and reservation token.

@@ -43,10 +43,16 @@ class RouteProjectionTest {
                         List.of(),
                         0L);
         assertEquals(
-                RouteProjection.project(new RouteProjection.Inputs(emptyQueue(20L), current),
-                        probe(), new CountingEvaluator(), routeProjection()),
-                RouteProjection.project(new RouteProjection.Inputs(emptyQueue(20L), cached),
-                        probe(), new CountingEvaluator(), routeProjection()));
+                RouteProjection.project(
+                        new RouteProjection.Inputs(emptyQueue(20L), current),
+                        probe(),
+                        new CountingEvaluator(),
+                        routeProjection()),
+                RouteProjection.project(
+                        new RouteProjection.Inputs(emptyQueue(20L), cached),
+                        probe(),
+                        new CountingEvaluator(),
+                        routeProjection()));
     }
 
     @Test
@@ -54,27 +60,24 @@ class RouteProjectionTest {
         RouteProjection.Inputs inputs = inputs(13L);
         CountingEvaluator evaluator = new CountingEvaluator();
 
-        RouteProjection.Candidate result = RouteProjection.project(
-                inputs,
-                probe(),
-                evaluator,
-                routeProjection());
+        RouteProjection.Candidate result =
+                RouteProjection.project(inputs, probe(), evaluator, routeProjection());
 
         assertTrue(result.hasPrediction());
         assertEquals(20L, result.incomingPrefillMs());
         assertTrue(evaluator.invocations() > 0);
 
-        assertThrows(IllegalArgumentException.class,
-                () -> new RouteProjection.Inputs(
-                        emptyQueue(13L), emptyWork(14L)));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new RouteProjection.Inputs(emptyQueue(13L), emptyWork(14L)));
     }
 
     @Test
     void oneCapturedEvaluatorRemainsStableAfterLearningPublishesReplacement() {
         LearningPredictor predictor = new LearningPredictor();
         PrefillTimePredictor.Evaluator captured = predictor.evaluator();
-        PrefillBatchFeatures sample = new PrefillBatchFeatures(List.of(
-                new PrefillBatchFeatures.Item(100L, 0L)));
+        PrefillBatchFeatures sample =
+                new PrefillBatchFeatures(List.of(new PrefillBatchFeatures.Item(100L, 0L)));
         long before = captured.estimateMs(20L, 0L);
 
         for (int sampleIndex = 0; sampleIndex < 4; sampleIndex++) {
@@ -82,13 +85,12 @@ class RouteProjectionTest {
         }
 
         assertNotSame(captured, predictor.evaluator());
-        RouteProjection.Candidate result = RouteProjection.project(
-                inputs(31L),
-                probe(),
-                captured,
-                routeProjection());
+        RouteProjection.Candidate result =
+                RouteProjection.project(inputs(31L), probe(), captured, routeProjection());
         assertTrue(result.hasPrediction());
-        assertEquals(before, captured.estimateMs(20L, 0L),
+        assertEquals(
+                before,
+                captured.estimateMs(20L, 0L),
                 "a projection-owned evaluator cannot change mid-call");
     }
 
@@ -106,14 +108,16 @@ class RouteProjectionTest {
 
     private static RouteProjection.Candidate candidate(long projectedTtftMs) {
         return new RouteProjection.Candidate(
-                projectedTtftMs, 0L,
+                projectedTtftMs,
+                0L,
                 RouteProjection.Candidate.InitialHeadDisposition.NONE,
-                "", 0L, 0L);
+                "",
+                0L,
+                0L);
     }
 
     private static RouteProjection.Inputs inputs(long capturedAtMs) {
-        return new RouteProjection.Inputs(
-                emptyQueue(capturedAtMs), emptyWork(capturedAtMs));
+        return new RouteProjection.Inputs(emptyQueue(capturedAtMs), emptyWork(capturedAtMs));
     }
 
     private static QueueSnapshot emptyQueue(long capturedAtMs) {
@@ -127,8 +131,7 @@ class RouteProjectionTest {
     }
 
     private static WorkSnapshot emptyWork(long capturedAtMs) {
-        return new WorkSnapshot(
-                capturedAtMs, List.of(), List.of(), 0L);
+        return new WorkSnapshot(capturedAtMs, List.of(), List.of(), 0L);
     }
 
     private static RouteProjection.Probe probe() {
@@ -137,13 +140,11 @@ class RouteProjectionTest {
 
     private static RouteProjection.DeliveryProjection routeProjection() {
         return new RouteDeliveryStrategy(
-                Mockito.mock(RequestRegistry.class),
-                Mockito.mock(DeliveryMetrics.class))
+                        Mockito.mock(RequestRegistry.class), Mockito.mock(DeliveryMetrics.class))
                 .projectionPolicy();
     }
 
-    private static final class CountingEvaluator
-            implements PrefillTimePredictor.Evaluator {
+    private static final class CountingEvaluator implements PrefillTimePredictor.Evaluator {
         private final AtomicInteger invocations = new AtomicInteger();
 
         @Override

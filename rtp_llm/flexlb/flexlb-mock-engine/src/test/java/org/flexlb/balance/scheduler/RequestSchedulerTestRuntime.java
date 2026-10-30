@@ -1,6 +1,5 @@
 package org.flexlb.balance.scheduler;
 
-import org.flexlb.testfixture.WorkerStatusTestFixtures;
 import org.flexlb.balance.PlacementResult;
 import org.flexlb.balance.delivery.CapacityBoundary;
 import org.flexlb.balance.delivery.DeliveryMetrics;
@@ -21,11 +20,12 @@ import org.flexlb.dao.BalanceContext;
 import org.flexlb.dao.loadbalance.Response;
 import org.flexlb.dao.loadbalance.ServerStatus;
 import org.flexlb.dao.master.WorkerStatus;
-import org.flexlb.testfixture.WorkerStatusResponse;
 import org.flexlb.dao.route.RoleType;
-import org.flexlb.service.monitor.StatusFailureReporter;
 import org.flexlb.service.monitor.BatchSchedulerReporter;
 import org.flexlb.service.monitor.RequestSchedulerReporter;
+import org.flexlb.service.monitor.StatusFailureReporter;
+import org.flexlb.testfixture.WorkerStatusResponse;
+import org.flexlb.testfixture.WorkerStatusTestFixtures;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,8 +38,7 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
 
     private final RequestRegistry lifecycle;
     private final EndpointEventProjector endpointEvents;
-    private final PlacementAvailability placementAvailability =
-            new PlacementAvailability();
+    private final PlacementAvailability placementAvailability = new PlacementAvailability();
     private final BindingRouter router;
     private final EndpointRegistry registry;
     private final EvictionManager evictionManager;
@@ -48,17 +47,16 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
 
     public RequestSchedulerTestRuntime(
             ConfigService configService,
-            Supplier<CapacityBoundary.Attempt<
-                    BatchDeliveryStrategy.PreparedSubmission>>
+            Supplier<CapacityBoundary.Attempt<BatchDeliveryStrategy.PreparedSubmission>>
                     prepareBatchSubmission,
             BatchSchedulerReporter batchReporter,
             RequestSchedulerReporter requestReporter,
             EngineCancelChannel cancelChannel) {
-        Objects.requireNonNull(
-                prepareBatchSubmission, "prepareBatchSubmission");
-        this.lifecycle = new RequestRegistry(
-                configService, batchReporter, requestReporter);
-        this.endpointEvents = new EndpointEventProjector(lifecycle, org.mockito.Mockito.mock(StatusFailureReporter.class));
+        Objects.requireNonNull(prepareBatchSubmission, "prepareBatchSubmission");
+        this.lifecycle = new RequestRegistry(configService, batchReporter, requestReporter);
+        this.endpointEvents =
+                new EndpointEventProjector(
+                        lifecycle, org.mockito.Mockito.mock(StatusFailureReporter.class));
         AtomicLong batchIds = new AtomicLong();
         DeliveryMetrics deliveryMetrics = new DeliveryMetrics(batchReporter);
         DeliveryStrategy delivery =
@@ -131,8 +129,7 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
             return PlacementResult.rejected(response);
         }
         if (response.getServerStatus() == null) {
-            throw new IllegalArgumentException(
-                    "successful fixture route has no worker metadata");
+            throw new IllegalArgumentException("successful fixture route has no worker metadata");
         }
 
         List<SelectedRole> selections = new ArrayList<>();
@@ -142,18 +139,18 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
                     continue;
                 }
                 String address = status.getServerIp() + ":" + status.getHttpPort();
-                WorkerEndpoint.GenerationPin pin = registry.capture(
-                        status.getRole(), address);
+                WorkerEndpoint.GenerationPin pin = registry.capture(status.getRole(), address);
                 if (pin == null) {
                     throw new IllegalStateException(
                             "fixture route references an unpublished endpoint: "
-                                    + status.getRole() + " " + address);
+                                    + status.getRole()
+                                    + " "
+                                    + address);
                 }
                 SelectedRole selected = select(pin, status);
                 selections.add(selected);
             }
-            return PlacementResult.success(
-                    RouteAdmission.prepare(context, selections, response));
+            return PlacementResult.success(RouteAdmission.prepare(context, selections, response));
         } finally {
             for (SelectedRole selection : selections) {
                 selection.close();
@@ -162,29 +159,31 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
     }
 
     /** Apply a newer worker status or refresh liveness from a same-version heartbeat. */
-    public void applyStatus(
-            WorkerStatus status, WorkerStatusResponse response) {
+    public void applyStatus(WorkerStatus status, WorkerStatusResponse response) {
         Objects.requireNonNull(status, "status");
         Objects.requireNonNull(response, "response");
         RoleType role = Objects.requireNonNull(response.getRole(), "response role");
-        WorkerEndpoint endpoint = registry.get(
-                role, status.getIpPort(), status);
+        WorkerEndpoint endpoint = registry.get(role, status.getIpPort(), status);
         if (endpoint == null) {
             throw new IllegalStateException(
                     "status generation has no published endpoint: "
-                            + status.getIpPort() + "#" + status.getGenerationId());
+                            + status.getIpPort()
+                            + "#"
+                            + status.getGenerationId());
         }
 
         Runnable projection;
         status.lock.lock();
         try {
-            long responseVersion = Objects.requireNonNull(
-                    response.getStatusVersion(), "response status version");
+            long responseVersion =
+                    Objects.requireNonNull(response.getStatusVersion(), "response status version");
             long committedVersion = status.appliedStatusCursor().statusVersion();
             if (responseVersion < committedVersion) {
                 throw new IllegalArgumentException(
                         "worker status version regressed: committed="
-                                + committedVersion + ", response=" + responseVersion);
+                                + committedVersion
+                                + ", response="
+                                + responseVersion);
             }
             WorkerStatus.StatusObservation observation =
                     WorkerStatusTestFixtures.observation(status, response);
@@ -201,12 +200,11 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
         projection.run();
     }
 
-    private static SelectedRole select(
-            WorkerEndpoint.GenerationPin pin, ServerStatus status) {
+    private static SelectedRole select(WorkerEndpoint.GenerationPin pin, ServerStatus status) {
         try {
             return switch (status.getRole()) {
-                case PREFILL, PDFUSION -> SelectedRole.prefill(
-                        pin, status, Math.max(0L, status.getPrefillTime()));
+                case PREFILL, PDFUSION ->
+                        SelectedRole.prefill(pin, status, Math.max(0L, status.getPrefillTime()));
                 case DECODE -> SelectedRole.decode(pin, status);
                 case VIT, ENCODER -> SelectedRole.stateless(pin, status);
                 case FRONTEND ->
@@ -227,7 +225,10 @@ public final class RequestSchedulerTestRuntime implements AutoCloseable {
     private static final class BindingRouter extends DefaultRouter {
         private DefaultRouter delegate;
 
-        private BindingRouter(org.flexlb.sync.status.WorkerDirectory workers, ConfigService configs, RequestRegistry lifecycle) {
+        private BindingRouter(
+                org.flexlb.sync.status.WorkerDirectory workers,
+                ConfigService configs,
+                RequestRegistry lifecycle) {
             // Real constructor dependencies keep Mockito instrumentation out of
             // the selector classes exercised by the bound production router.
             super(

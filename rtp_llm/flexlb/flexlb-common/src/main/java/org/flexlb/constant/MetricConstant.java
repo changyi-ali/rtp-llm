@@ -5,11 +5,14 @@ package org.flexlb.constant;
  * Use with standard monitoring libraries like Micrometer/Prometheus
  */
 public class MetricConstant {
+    public static final String GRPC_RESPONSE_SIZE = "app.grpc.response.size";
 
     public static final String NETTY_DIRECT_RESERVED_BYTES = "app.netty.direct.reserved.bytes";
     public static final String NETTY_DIRECT_PINNED_BYTES = "app.netty.direct.pinned.bytes";
-    public static final String NETTY_MEMORY_SAMPLE_DURATION_MS = "app.netty.memory.sample.duration.ms";
-    public static final String NETTY_MEMORY_SAMPLE_TIMESTAMP_MS = "app.netty.memory.sample.timestamp.ms";
+    public static final String NETTY_MEMORY_SAMPLE_DURATION_MS =
+            "app.netty.memory.sample.duration.ms";
+    public static final String NETTY_MEMORY_SAMPLE_TIMESTAMP_MS =
+            "app.netty.memory.sample.timestamp.ms";
 
     /**
      * One increment per GC notification, tagged by gc, collector and pid.
@@ -26,12 +29,14 @@ public class MetricConstant {
     /**
      * Engine status check success period
      */
-    public static final String ENGINE_STATUS_CHECK_SUCCESS_PERIOD = "app.engine.health.check.success.period";
+    public static final String ENGINE_STATUS_CHECK_SUCCESS_PERIOD =
+            "app.engine.health.check.success.period";
 
     public static final String ENGINE_PREFILL_WORKER_NUMBER =
             "app.engine.health.check.engine.prefill.worker.number";
 
-    public static final String ENGINE_DECODE_WORKER_NUMBER = "app.engine.health.check.engine.decode.worker.number";
+    public static final String ENGINE_DECODE_WORKER_NUMBER =
+            "app.engine.health.check.engine.decode.worker.number";
 
     public static final String ENGINE_ENCODER_WORKER_NUMBER =
             "app.engine.health.check.engine.encoder.worker.number";
@@ -61,11 +66,14 @@ public class MetricConstant {
     /**
      * Master load balancing service total QPS
      */
-    public static final String ENGINE_BALANCING_MASTER_ALL_QPS = "app.engine.balancing.master.all.qps";
+    public static final String ENGINE_BALANCING_MASTER_ALL_QPS =
+            "app.engine.balancing.master.all.qps";
 
-    public static final String ENGINE_BALANCING_MASTER_ALL_RT = "app.engine.balancing.master.all.rt";
+    public static final String ENGINE_BALANCING_MASTER_ALL_RT =
+            "app.engine.balancing.master.all.rt";
 
-    public static final String ENGINE_BALANCING_MASTER_SELECT_DETAIL = "app.engine.balancing.master.select.detail";
+    public static final String ENGINE_BALANCING_MASTER_SELECT_DETAIL =
+            "app.engine.balancing.master.select.detail";
 
     public static final String ENGINE_BALANCING_MASTER_WORKER_SELECT_DETAIL =
             "app.engine.balancing.master.worker.select.detail";
@@ -76,7 +84,8 @@ public class MetricConstant {
     /**
      * Batch dispatch size (number of requests per batch)
      */
-    public static final String ENGINE_BALANCING_MASTER_BATCH_SIZE = "app.engine.balancing.master.batch.size";
+    public static final String ENGINE_BALANCING_MASTER_BATCH_SIZE =
+            "app.engine.balancing.master.batch.size";
 
     /**
      * Batch dispatch total token count per batch (sum of seqLen across picked items)
@@ -142,8 +151,7 @@ public class MetricConstant {
      * the scheduler's own ledger (leak signature: max age creeping toward the
      * TTL window); PREFILL/DECODE + real engineIp mark per-worker ledgers.
      */
-    public static final String INFLIGHT_MAX_AGE_MS =
-            "app.flexlb.inflight.max.age.ms";
+    public static final String INFLIGHT_MAX_AGE_MS = "app.flexlb.inflight.max.age.ms";
 
     /**
      * FlexLB inflight TTL expired count — number of inflight entries evicted by
@@ -201,7 +209,8 @@ public class MetricConstant {
     /**
      * Engine running queue time (from EP authoritative value)
      */
-    public static final String ENGINE_RUNNING_QUEUE_TIME = "app.engine.health.check.running.queue.time";
+    public static final String ENGINE_RUNNING_QUEUE_TIME =
+            "app.engine.health.check.running.queue.time";
 
     /**
      * FlexLB batcher queue size — number of pending (not-yet-batched) requests
@@ -215,12 +224,14 @@ public class MetricConstant {
     /**
      * Engine finished task list size
      */
-    public static final String ENGINE_FINISHED_TASK_LIST_SIZE = "app.engine.health.check.finished.task.list.size";
+    public static final String ENGINE_FINISHED_TASK_LIST_SIZE =
+            "app.engine.health.check.finished.task.list.size";
 
     /**
      * Engine running task info size
      */
-    public static final String ENGINE_RUNNING_TASK_INFO_SIZE = "app.engine.health.check.running.task.info.size";
+    public static final String ENGINE_RUNNING_TASK_INFO_SIZE =
+            "app.engine.health.check.running.task.info.size";
 
     /**
      * Prefill master node monitoring
@@ -240,23 +251,27 @@ public class MetricConstant {
     /**
      * Load balancing service thread pool status
      */
-    public static final String ENGINE_BALANCING_THREAD_POOL_INFO = "app.engine.balancing.thread.pool.info";
+    public static final String ENGINE_BALANCING_THREAD_POOL_INFO =
+            "app.engine.balancing.thread.pool.info";
 
     /**
      * Load balancing service NioEventLoopGroup status
      */
-    public static final String ENGINE_BALANCING_EVENT_LOOP_GROUP_INFO = "app.engine.balancing.event.loop.group.info";
+    public static final String ENGINE_BALANCING_EVENT_LOOP_GROUP_INFO =
+            "app.engine.balancing.event.loop.group.info";
 
     /**
      * Engine worker info service step latency variance
      */
-    public static final String ENGINE_WORKER_INFO_STEP_LATENCY_VAR = "app.engine.worker.info.step.latency.var";
+    public static final String ENGINE_WORKER_INFO_STEP_LATENCY_VAR =
+            "app.engine.worker.info.step.latency.var";
 
     /**
      * Variance of each role's observable logical endpoint load. Prefill reports
      * committed work-ms while Decode and status-only roles report active task counts.
      */
-    public static final String ENGINE_WORKER_INFO_RUNNING_QUERY_LEN_VAR = "app.engine.worker.info.running.query.len.var";
+    public static final String ENGINE_WORKER_INFO_RUNNING_QUERY_LEN_VAR =
+            "app.engine.worker.info.running.query.len.var";
 
     public static final String ENGINE_WORKER_STATUS_ENGINE_OBSERVED_WAITING_TO_RUNNING_MS =
             "app.engine.worker.status.engine.waiting.to.running.ms";
@@ -363,10 +378,14 @@ public class MetricConstant {
     public static final String CACHE_HIT_COMPARISON_KVCM_PREDICTED_TOKENS =
             "app.cache.hit.comparison.kvcm.predicted.tokens";
 
-    public static final String CACHE_CLUSTER_RECENT_HIT_TOKENS = "app.cache.cluster.recent.hit.tokens";
-    public static final String CACHE_CLUSTER_RECENT_INPUT_TOKENS = "app.cache.cluster.recent.input.tokens";
-    public static final String CACHE_CLUSTER_RECENT_HISTORY_COVERAGE_MS = "app.cache.cluster.recent.history.coverage.ms";
-    public static final String CACHE_CLUSTER_RECENT_HISTORY_READY = "app.cache.cluster.recent.history.ready";
+    public static final String CACHE_CLUSTER_RECENT_HIT_TOKENS =
+            "app.cache.cluster.recent.hit.tokens";
+    public static final String CACHE_CLUSTER_RECENT_INPUT_TOKENS =
+            "app.cache.cluster.recent.input.tokens";
+    public static final String CACHE_CLUSTER_RECENT_HISTORY_COVERAGE_MS =
+            "app.cache.cluster.recent.history.coverage.ms";
+    public static final String CACHE_CLUSTER_RECENT_HISTORY_READY =
+            "app.cache.cluster.recent.history.ready";
 
     /**
      * Accumulated input tokens from requests with valid cache-hit feedback.
@@ -459,24 +478,28 @@ public class MetricConstant {
     /**
      * Find matching engines response time
      */
-    public static final String CACHE_FIND_MATCHING_ENGINES_RT = "app.cache.find.matching.engines.rt";
+    public static final String CACHE_FIND_MATCHING_ENGINES_RT =
+            "app.cache.find.matching.engines.rt";
 
     /**
      * Update cache response time
      */
-    public static final String CACHE_UPDATE_ENGINE_BLOCK_CACHE_RT = "app.cache.update.engine.block.cache.rt";
+    public static final String CACHE_UPDATE_ENGINE_BLOCK_CACHE_RT =
+            "app.cache.update.engine.block.cache.rt";
 
     /**
      * Cache status check response time
      */
     public static final String CACHE_STATUS_CHECK_VISITOR_RT = "app.cache.status.check.visitor.rt";
 
-    public static final String CACHE_STATUS_CHECK_VISITOR_SUCCESS_QPS = "app.cache.status.check.visitor.success.qps";
+    public static final String CACHE_STATUS_CHECK_VISITOR_SUCCESS_QPS =
+            "app.cache.status.check.visitor.success.qps";
 
     /**
      * Cache status check success period
      */
-    public static final String CACHE_STATUS_CHECK_SUCCESS_PERIOD = "app.cache.status.check.success.period";
+    public static final String CACHE_STATUS_CHECK_SUCCESS_PERIOD =
+            "app.cache.status.check.success.period";
 
     /**
      * Cache status check failure information
@@ -501,7 +524,8 @@ public class MetricConstant {
     /**
      * Remaining available KV cache token count
      */
-    public static final String CACHE_AVAILABLE_KV_CACHE_TOKENS = "app.cache.available.kv.cache.tokens";
+    public static final String CACHE_AVAILABLE_KV_CACHE_TOKENS =
+            "app.cache.available.kv.cache.tokens";
 
     /**
      * Worker-reported total KV cache token capacity, tagged by role and bare engine IP.
@@ -521,7 +545,8 @@ public class MetricConstant {
     /**
      * Removed blocks count in cache diff calculation
      */
-    public static final String CACHE_DIFF_REMOVED_BLOCKS_SIZE = "app.cache.diff.removed.blocks.size";
+    public static final String CACHE_DIFF_REMOVED_BLOCKS_SIZE =
+            "app.cache.diff.removed.blocks.size";
 
     /**
      * Engine view map size (current number of engines)
@@ -544,6 +569,7 @@ public class MetricConstant {
      * gRPC call count
      */
     public static final String GRPC_CALL_COUNT = "app.grpc.call.count";
+
     public static final String GRPC_CALL_FAILURE = "app.grpc.call.failure";
     public static final String GRPC_DELIVERY_DELAY = "app.grpc.delivery.delay_ms";
 
@@ -582,7 +608,8 @@ public class MetricConstant {
     /**
      * Routing execution time in milliseconds
      */
-    public static final String ROUTING_ROUTE_EXECUTION_TIME_MS = "app.routing.route.execution.time.ms";
+    public static final String ROUTING_ROUTE_EXECUTION_TIME_MS =
+            "app.routing.route.execution.time.ms";
 
     /**
      * Routing success QPS
@@ -646,7 +673,8 @@ public class MetricConstant {
     /**
      * gRPC server executor active thread count (gauge)
      */
-    public static final String GRPC_SERVER_EXECUTOR_ACTIVE_THREADS = "grpc.server.executor.active.threads";
+    public static final String GRPC_SERVER_EXECUTOR_ACTIVE_THREADS =
+            "grpc.server.executor.active.threads";
 
     /**
      * gRPC server executor queue size (gauge)
@@ -661,7 +689,8 @@ public class MetricConstant {
     /**
      * gRPC server executor maximum pool size (gauge)
      */
-    public static final String GRPC_SERVER_EXECUTOR_MAX_POOL_SIZE = "grpc.server.executor.max.pool.size";
+    public static final String GRPC_SERVER_EXECUTOR_MAX_POOL_SIZE =
+            "grpc.server.executor.max.pool.size";
 
     /**
      * gRPC server executor rejected task counter. Rejection uses AbortPolicy.
@@ -674,7 +703,8 @@ public class MetricConstant {
     /**
      * Dispatch executor active thread count (gauge)
      */
-    public static final String DISPATCH_EXECUTOR_ACTIVE_THREADS = "dispatch.executor.active.threads";
+    public static final String DISPATCH_EXECUTOR_ACTIVE_THREADS =
+            "dispatch.executor.active.threads";
 
     /**
      * Dispatch executor queue size (gauge)
@@ -748,7 +778,8 @@ public class MetricConstant {
     /**
      * Auto-TPM decode shadow hard KV reserved tokens (gauge), tags: endpoint
      */
-    public static final String AUTO_TPM_DECODE_SHADOW_KV_RESERVED = "auto_tpm.decode.shadow_kv_reserved";
+    public static final String AUTO_TPM_DECODE_SHADOW_KV_RESERVED =
+            "auto_tpm.decode.shadow_kv_reserved";
 
     /**
      * Auto-TPM TTFT approximation in ms (timer), tags: priority.
@@ -831,4 +862,13 @@ public class MetricConstant {
      */
     public static final String AUTO_TPM_PREEMPTION_TARGET_INVALID_COUNT =
             "auto_tpm.preemption.target_invalid.count";
+
+    public static final String CACHE_RECENT_KEY_HIT_COUNT = "app.cache.recent.key.hit.count";
+    public static final String CACHE_RECENT_KEY_TOTAL_COUNT = "app.cache.recent.key.total.count";
+    public static final String CACHE_ROUTING_SELECTED_MATCH_TOTAL_TOKENS =
+            "app.cache.routing.selected.match.total.tokens";
+    public static final String GRPC_SERVER_EXECUTOR_CALLER_RUNS =
+            "grpc.server.executor.caller.runs";
+    public static final String GRPC_SERVER_EXECUTOR_COMPLETED_TASKS =
+            "grpc.server.executor.completed.tasks";
 }

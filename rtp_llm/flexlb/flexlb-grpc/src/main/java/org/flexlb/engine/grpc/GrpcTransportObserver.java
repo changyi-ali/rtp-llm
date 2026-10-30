@@ -17,14 +17,17 @@ public final class GrpcTransportObserver {
     private final ConcurrentMap<SocketKey, SocketState> sockets = new ConcurrentHashMap<>();
 
     public enum Event {
-        PEER_EOF, READ_RESET, WRITE_RESET, WRITE_BROKEN_PIPE, READ_FAILURE, WRITE_FAILURE
+        PEER_EOF,
+        READ_RESET,
+        WRITE_RESET,
+        WRITE_BROKEN_PIPE,
+        READ_FAILURE,
+        WRITE_FAILURE
     }
 
-    public record Observation(Event event, long nanoTime, GrpcFailure.Kind causeKind) {
-    }
+    public record Observation(Event event, long nanoTime, GrpcFailure.Kind causeKind) {}
 
-    private record SocketKey(SocketAddress local, SocketAddress remote) {
-    }
+    private record SocketKey(SocketAddress local, SocketAddress remote) {}
 
     public NioSocketChannel newChannel() {
         return new ObservedChannel();
@@ -37,7 +40,9 @@ public final class GrpcTransportObserver {
             }
             SocketAddress local = attributes.get(Grpc.TRANSPORT_ATTR_LOCAL_ADDR);
             SocketAddress remote = attributes.get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR);
-            return local == null || remote == null ? null : sockets.get(new SocketKey(local, remote));
+            return local == null || remote == null
+                    ? null
+                    : sockets.get(new SocketKey(local, remote));
         } catch (RuntimeException | Error ignored) {
             return null;
         }
@@ -86,16 +91,20 @@ public final class GrpcTransportObserver {
 
         ObservedChannel() {
             try {
-                pipeline().addLast(new ChannelInboundHandlerAdapter() {
-                    @Override
-                    public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
-                        // Read-buffer allocation can fail before doReadBytes is called.
-                        if (state != null) {
-                            state.recordFailure(true, cause);
-                        }
-                        context.fireExceptionCaught(cause);
-                    }
-                });
+                pipeline()
+                        .addLast(
+                                new ChannelInboundHandlerAdapter() {
+                                    @Override
+                                    public void exceptionCaught(
+                                            ChannelHandlerContext context, Throwable cause) {
+                                        // Read-buffer allocation can fail before doReadBytes is
+                                        // called.
+                                        if (state != null) {
+                                            state.recordFailure(true, cause);
+                                        }
+                                        context.fireExceptionCaught(cause);
+                                    }
+                                });
             } catch (RuntimeException | Error ignored) {
                 // Installing diagnostics must not prevent channel construction.
             }

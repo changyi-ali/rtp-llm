@@ -2,11 +2,11 @@ package org.flexlb.balance.endpoint;
 
 import org.flexlb.balance.scheduler.PlacementAvailability;
 import org.flexlb.config.ConfigService;
-import org.flexlb.testfixture.TaskInfo;
 import org.flexlb.dao.master.WorkerStatus;
-import org.flexlb.testfixture.WorkerStatusResponse;
 import org.flexlb.dao.route.RoleType;
 import org.flexlb.service.monitor.BatchSchedulerReporter;
+import org.flexlb.testfixture.TaskInfo;
+import org.flexlb.testfixture.WorkerStatusResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -261,8 +261,8 @@ class EndpointRegistryRoleTest {
     void vit_routing_directory_tracks_publication_replacement_retirement_and_close() {
         String address = "127.0.0.1:8080";
         WorkerStatus firstStatus = status(RoleType.VIT, 8080);
-        WorkerEndpoint first = EndpointTestSupport.publishEndpoint(
-                registry, RoleType.VIT, address, firstStatus);
+        WorkerEndpoint first =
+                EndpointTestSupport.publishEndpoint(registry, RoleType.VIT, address, firstStatus);
         var original = registry.vitRoutingSnapshot();
         assertEquals(1, original.size());
         assertSame(first, original.getFirst().endpoint());
@@ -270,8 +270,9 @@ class EndpointRegistryRoleTest {
         assertThrows(UnsupportedOperationException.class, () -> original.clear());
         retire(RoleType.VIT, address, firstStatus);
         assertTrue(registry.vitRoutingSnapshot().isEmpty());
-        WorkerEndpoint replacement = EndpointTestSupport.publishEndpoint(
-                registry, RoleType.VIT, address, status(RoleType.VIT, 8080));
+        WorkerEndpoint replacement =
+                EndpointTestSupport.publishEndpoint(
+                        registry, RoleType.VIT, address, status(RoleType.VIT, 8080));
         assertSame(first, original.getFirst().endpoint());
         assertSame(replacement, registry.vitRoutingSnapshot().getFirst().endpoint());
         try (var pin = registry.capture(RoleType.VIT, address)) {

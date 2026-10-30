@@ -27,7 +27,8 @@ public class GlobalCacheIndex {
     /**
      * Core storage structure: block_hash_id -> Set<engine_ip:engine_port>
      */
-    private final ConcurrentHashMap<Long, Set<String>> blockToEnginesMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Set<String>> blockToEnginesMap =
+            new ConcurrentHashMap<>();
 
     /**
      * Serializes index mutations and mapping-count updates
@@ -38,6 +39,7 @@ public class GlobalCacheIndex {
      * Statistics
      */
     private final LongAdder totalMappings = new LongAdder();
+
     /** Per-caller compaction storage; cache queries never retain this array. */
     private final ThreadLocal<String[]> prefixCandidates =
             ThreadLocal.withInitial(() -> new String[0]);
@@ -50,9 +52,13 @@ public class GlobalCacheIndex {
      *                      index identifies one independently routable engine behind the physical
      *                      frontend
      */
-    public void addCacheBlock(Long blockCacheKey, String engineIpPort, EndpointTrace.Poll pollTrace) {
+    public void addCacheBlock(
+            Long blockCacheKey, String engineIpPort, EndpointTrace.Poll pollTrace) {
         if (blockCacheKey == null || engineIpPort == null) {
-            log.warn("Invalid parameters: blockCacheKey={}, engineIpPort={}", blockCacheKey, engineIpPort);
+            log.warn(
+                    "Invalid parameters: blockCacheKey={}, engineIpPort={}",
+                    blockCacheKey,
+                    engineIpPort);
             return;
         }
 
@@ -67,8 +73,9 @@ public class GlobalCacheIndex {
             if (contended && pollTrace != null) {
                 pollTrace.record(Stage.CACHE_INDEX_LOCK_ACQUIRED);
             }
-            Set<String> engines = blockToEnginesMap.computeIfAbsent(
-                    blockCacheKey, k -> ConcurrentHashMap.newKeySet());
+            Set<String> engines =
+                    blockToEnginesMap.computeIfAbsent(
+                            blockCacheKey, k -> ConcurrentHashMap.newKeySet());
 
             boolean added = engines.add(engineIpPort);
             if (added) {
@@ -88,7 +95,8 @@ public class GlobalCacheIndex {
      * @param engineIp      logical worker identity in {@code ip:port@engineIndex} format
      * @param blockCacheKey Cache block hash value
      */
-    public void removeCacheBlock(String engineIp, Long blockCacheKey, EndpointTrace.Poll pollTrace) {
+    public void removeCacheBlock(
+            String engineIp, Long blockCacheKey, EndpointTrace.Poll pollTrace) {
         if (blockCacheKey == null || engineIp == null) {
             return;
         }
@@ -135,7 +143,8 @@ public class GlobalCacheIndex {
      *
      * @param engineIp logical worker identity in {@code ip:port@engineIndex} format
      */
-    public void removeAllCacheBlockOfEngine(String engineIp, Set<Long> blockCacheKeys, EndpointTrace trace) {
+    public void removeAllCacheBlockOfEngine(
+            String engineIp, Set<Long> blockCacheKeys, EndpointTrace trace) {
         if (engineIp == null || blockCacheKeys == null || blockCacheKeys.isEmpty()) {
             return;
         }
@@ -145,10 +154,14 @@ public class GlobalCacheIndex {
         // Only this generation's owned keys are visited. Cache maintenance is
         // isolated from health polling; periodic unlock/relock is not needed
         // for heartbeat progress and a non-fair lock cannot guarantee handoff.
-        if (trace != null) {trace.record(Stage.CACHE_INDEX_LOCK_ATTEMPT);}
+        if (trace != null) {
+            trace.record(Stage.CACHE_INDEX_LOCK_ATTEMPT);
+        }
         lock.lock();
         try {
-            if (trace != null) {trace.record(Stage.CACHE_INDEX_LOCK_ACQUIRED);}
+            if (trace != null) {
+                trace.record(Stage.CACHE_INDEX_LOCK_ACQUIRED);
+            }
             for (Long key : blockCacheKeys) {
                 scannedKeys++;
                 Set<String> engines = blockToEnginesMap.get(key);
@@ -176,8 +189,8 @@ public class GlobalCacheIndex {
      * @param blockCacheKeys Ordered cache block hash value list
      * @return prefix match lengths keyed by logical worker identity
      */
-    public Map<String, Integer> batchCalculatePrefixMatchLength(List<String> engineIpPorts,
-                                                                List<Long> blockCacheKeys) {
+    public Map<String, Integer> batchCalculatePrefixMatchLength(
+            List<String> engineIpPorts, List<Long> blockCacheKeys) {
 
         if (isEmpty(engineIpPorts) || isEmpty(blockCacheKeys)) {
             return Collections.emptyMap();
@@ -192,11 +205,10 @@ public class GlobalCacheIndex {
      * @param blockCacheKeys Ordered cache block hash value list
      * @return prefix match lengths keyed by logical worker identity
      */
-    private Map<String, Integer> calculatePrefixMatchLength(List<String> engineIpPorts,
-                                                            List<Long> blockCacheKeys) {
+    private Map<String, Integer> calculatePrefixMatchLength(
+            List<String> engineIpPorts, List<Long> blockCacheKeys) {
 
-        Set<String> firstBlockOwners = getEnginesForBlock(
-                blockCacheKeys.getFirst());
+        Set<String> firstBlockOwners = getEnginesForBlock(blockCacheKeys.getFirst());
         if (firstBlockOwners.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -213,8 +225,7 @@ public class GlobalCacheIndex {
             candidates[index] = engineIpPorts.get(index);
         }
         int survivorCount = 0;
-        for (int candidateIndex = 0;
-                candidateIndex < engineIpPorts.size(); candidateIndex++) {
+        for (int candidateIndex = 0; candidateIndex < engineIpPorts.size(); candidateIndex++) {
             String candidate = candidates[candidateIndex];
             if (firstBlockOwners.contains(candidate)) {
                 candidates[survivorCount++] = candidate;
@@ -225,13 +236,10 @@ public class GlobalCacheIndex {
         }
 
         Map<String, Integer> result = null;
-        for (int blockIndex = 1;
-                blockIndex < blockCacheKeys.size(); blockIndex++) {
-            Set<String> blockOwners = getEnginesForBlock(
-                    blockCacheKeys.get(blockIndex));
+        for (int blockIndex = 1; blockIndex < blockCacheKeys.size(); blockIndex++) {
+            Set<String> blockOwners = getEnginesForBlock(blockCacheKeys.get(blockIndex));
             int nextSurvivorCount = 0;
-            for (int candidateIndex = 0;
-                    candidateIndex < survivorCount; candidateIndex++) {
+            for (int candidateIndex = 0; candidateIndex < survivorCount; candidateIndex++) {
                 String candidate = candidates[candidateIndex];
                 if (blockOwners.contains(candidate)) {
                     candidates[nextSurvivorCount++] = candidate;

@@ -10,19 +10,19 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
-import org.flexlb.metric.FlexMonitor;
-import org.flexlb.enums.FlexMetricType;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.flexlb.config.ConfigService;
 import org.flexlb.config.FlexlbConfig;
 import org.flexlb.constant.MetricConstant;
+import org.flexlb.enums.FlexMetricType;
 import org.flexlb.interceptor.GrpcQosHeaderInterceptor;
 import org.flexlb.interceptor.GrpcServerTimingInterceptor;
 import org.flexlb.interceptor.GrpcTraceInterceptor;
+import org.flexlb.metric.FlexMonitor;
 import org.flexlb.util.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.env.Environment;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -43,6 +43,7 @@ public class FlexlbGrpcServer {
      * to backend inference engine ports (HTTP+1→gRPC).
      */
     static final int FLEXLB_GRPC_PORT_OFFSET = 2;
+
     private static final int DEFAULT_HTTP_PORT = 7001;
     private final long quietPeriodNanos;
 
@@ -71,18 +72,23 @@ public class FlexlbGrpcServer {
     private GrpcReceivingGuard receivingGuard;
     private CountingCallerRunsHandler countingCallerRunsHandler;
 
-    public FlexlbGrpcServer(FlexlbServiceImpl flexlbServiceImpl,
-                            ConfigService configService,
-                            Environment environment,
-                            @Qualifier("grpcServerEventLoopGroup") EventLoopGroup grpcServerEventLoopGroup,
-                            @Autowired(required = false) MeterRegistry meterRegistry,
-                            GrpcServerTimingInterceptor grpcServerTimingInterceptor,
-                            GrpcQosHeaderInterceptor grpcQosHeaderInterceptor) {
+    public FlexlbGrpcServer(
+            FlexlbServiceImpl flexlbServiceImpl,
+            ConfigService configService,
+            Environment environment,
+            @Qualifier("grpcServerEventLoopGroup") EventLoopGroup grpcServerEventLoopGroup,
+            @Autowired(required = false) MeterRegistry meterRegistry,
+            GrpcServerTimingInterceptor grpcServerTimingInterceptor,
+            GrpcQosHeaderInterceptor grpcQosHeaderInterceptor) {
         this.flexlbServiceImpl = flexlbServiceImpl;
         this.configService = configService;
         this.environment = environment;
-        this.quietPeriodNanos = TimeUnit.MILLISECONDS.toNanos(
-                configService.loadBalanceConfig().getGrpcServer().getShutdownQuietPeriodMs());
+        this.quietPeriodNanos =
+                TimeUnit.MILLISECONDS.toNanos(
+                        configService
+                                .loadBalanceConfig()
+                                .getGrpcServer()
+                                .getShutdownQuietPeriodMs());
         this.grpcServerEventLoopGroup = grpcServerEventLoopGroup;
         this.meterRegistry = meterRegistry;
         this.grpcServerTimingInterceptor = grpcServerTimingInterceptor;
@@ -101,60 +107,92 @@ public class FlexlbGrpcServer {
         int httpPort = Integer.parseInt(portStr);
         int port = httpPort + FLEXLB_GRPC_PORT_OFFSET;
 
-        FlexlbConfig.GrpcServerConfig executorConfig = configService.loadBalanceConfig().getGrpcServer();
-        Logger.info("FlexLB gRPC executor config: coreSize={}, maxSize={}, queueSize={}",
-                executorConfig.getExecutorCoreSize(), executorConfig.getExecutorMaxSize(),
+        FlexlbConfig.GrpcServerConfig executorConfig =
+                configService.loadBalanceConfig().getGrpcServer();
+        Logger.info(
+                "FlexLB gRPC executor config: coreSize={}, maxSize={}, queueSize={}",
+                executorConfig.getExecutorCoreSize(),
+                executorConfig.getExecutorMaxSize(),
                 executorConfig.getExecutorQueueSize());
 
-        GrpcReceivingBudget.Limits receiving = GrpcReceivingBudget.resolve(executorConfig,
-                io.netty.util.internal.PlatformDependent.maxDirectMemory());
-        Logger.info("FlexLB logical receiving wire budget (not pinned Direct): schedule={}, control={}, timeoutMs={}, totalBudgetBytes={}, scheduleBudgetBytes={}, controlBudgetBytes={}, initialReservationBytes={}, DirectFraction={}",
-                receiving.scheduleCalls(), receiving.controlCalls(), receiving.timeoutMs(),
-                receiving.budgetBytes(), receiving.scheduleBudgetBytes(), receiving.controlBudgetBytes(),
+        GrpcReceivingBudget.Limits receiving =
+                GrpcReceivingBudget.resolve(
+                        executorConfig, io.netty.util.internal.PlatformDependent.maxDirectMemory());
+        Logger.info(
+                "FlexLB logical receiving wire budget (not pinned Direct): schedule={}, control={}, timeoutMs={}, totalBudgetBytes={}, scheduleBudgetBytes={}, controlBudgetBytes={}, initialReservationBytes={}, DirectFraction={}",
+                receiving.scheduleCalls(),
+                receiving.controlCalls(),
+                receiving.timeoutMs(),
+                receiving.budgetBytes(),
+                receiving.scheduleBudgetBytes(),
+                receiving.controlBudgetBytes(),
                 receiving.initialReservationBytes(),
-                (double) receiving.budgetBytes() / io.netty.util.internal.PlatformDependent.maxDirectMemory());
+                (double) receiving.budgetBytes()
+                        / io.netty.util.internal.PlatformDependent.maxDirectMemory());
 
-        this.bossGroup = new NioEventLoopGroup(1, new DefaultThreadFactory("flexlb-grpc-server-boss"));
+        this.bossGroup =
+                new NioEventLoopGroup(1, new DefaultThreadFactory("flexlb-grpc-server-boss"));
         this.countingCallerRunsHandler = new CountingCallerRunsHandler();
-        this.grpcExecutor = new ThreadPoolExecutor(
-                executorConfig.getExecutorCoreSize(), executorConfig.getExecutorMaxSize(),
-                60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(executorConfig.getExecutorQueueSize()),
-                new DefaultThreadFactory("flexlb-grpc-executor"),
-                countingCallerRunsHandler
-        );
+        this.grpcExecutor =
+                new ThreadPoolExecutor(
+                        executorConfig.getExecutorCoreSize(),
+                        executorConfig.getExecutorMaxSize(),
+                        60L,
+                        TimeUnit.SECONDS,
+                        new LinkedBlockingQueue<>(executorConfig.getExecutorQueueSize()),
+                        new DefaultThreadFactory("flexlb-grpc-executor"),
+                        countingCallerRunsHandler);
 
         // Keep small Cancel requests independent of Schedule receiving and callback saturation.
-        this.grpcControlExecutor = new ThreadPoolExecutor(
-                Math.min(8, executorConfig.getExecutorMaxSize()),
-                Math.min(8, executorConfig.getExecutorMaxSize()), 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>((int) Math.min(1000, Math.max(16L, 2L * receiving.controlCalls()))),
-                new DefaultThreadFactory("flexlb-grpc-control"), new CountingCallerRunsHandler());
-        this.receivingGuard = new GrpcReceivingGuard(receiving.scheduleCalls(), receiving.controlCalls(),
-                receiving.timeoutMs(), grpcExecutor, grpcControlExecutor, receiving.scheduleBudgetBytes(),
-                receiving.controlBudgetBytes(), receiving.initialReservationBytes());
+        this.grpcControlExecutor =
+                new ThreadPoolExecutor(
+                        Math.min(8, executorConfig.getExecutorMaxSize()),
+                        Math.min(8, executorConfig.getExecutorMaxSize()),
+                        60L,
+                        TimeUnit.SECONDS,
+                        new LinkedBlockingQueue<>(
+                                (int) Math.min(1000, Math.max(16L, 2L * receiving.controlCalls()))),
+                        new DefaultThreadFactory("flexlb-grpc-control"),
+                        new CountingCallerRunsHandler());
+        this.receivingGuard =
+                new GrpcReceivingGuard(
+                        receiving.scheduleCalls(),
+                        receiving.controlCalls(),
+                        receiving.timeoutMs(),
+                        grpcExecutor,
+                        grpcControlExecutor,
+                        receiving.scheduleBudgetBytes(),
+                        receiving.controlBudgetBytes(),
+                        receiving.initialReservationBytes());
 
         // Register monitoring metrics for the gRPC server executor
         registerMetrics();
         registerReceivingMetrics();
 
-        server = NettyServerBuilder.forPort(port)
-                .channelType(NioServerSocketChannel.class)
-                .bossEventLoopGroup(bossGroup)
-                .workerEventLoopGroup(grpcServerEventLoopGroup)
-                // Method lookup and the call supplier run on the transport thread; the supplier
-                // switches all payload parsing and service callbacks to the appropriate worker pool.
-                .directExecutor()
-                .callExecutor(receivingGuard)
-                .addStreamTracerFactory(receivingGuard)
-                .intercept(new GrpcOverloadInterceptor(grpcExecutor, grpcControlExecutor))
-                .intercept(receivingGuard)
-                .addService(ServerInterceptors.intercept(flexlbServiceImpl,
-                        new GrpcTraceInterceptor(), grpcServerTimingInterceptor, grpcQosHeaderInterceptor))
-                .maxInboundMessageSize(org.flexlb.constant.GrpcConstants.MAX_MESSAGE_SIZE)
-                .flowControlWindow(4 * 1024 * 1024)
-                .build()
-                .start();
+        server =
+                NettyServerBuilder.forPort(port)
+                        .channelType(NioServerSocketChannel.class)
+                        .bossEventLoopGroup(bossGroup)
+                        .workerEventLoopGroup(grpcServerEventLoopGroup)
+                        // Method lookup and the call supplier run on the transport thread; the
+                        // supplier
+                        // switches all payload parsing and service callbacks to the appropriate
+                        // worker pool.
+                        .directExecutor()
+                        .callExecutor(receivingGuard)
+                        .addStreamTracerFactory(receivingGuard)
+                        .intercept(new GrpcOverloadInterceptor(grpcExecutor, grpcControlExecutor))
+                        .intercept(receivingGuard)
+                        .addService(
+                                ServerInterceptors.intercept(
+                                        flexlbServiceImpl,
+                                        new GrpcTraceInterceptor(),
+                                        grpcServerTimingInterceptor,
+                                        grpcQosHeaderInterceptor))
+                        .maxInboundMessageSize(org.flexlb.constant.GrpcConstants.MAX_MESSAGE_SIZE)
+                        .flowControlWindow(4 * 1024 * 1024)
+                        .build()
+                        .start();
 
         Logger.info("FlexLB gRPC server started on port {}", port);
     }
@@ -182,34 +220,46 @@ public class FlexlbGrpcServer {
         }
 
         // Gauges — auto-read from ThreadPoolExecutor on each scrape
-        Gauge.builder(METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_ACTIVE_THREADS,
-                        grpcExecutor, ThreadPoolExecutor::getActiveCount)
+        Gauge.builder(
+                        METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_ACTIVE_THREADS,
+                        grpcExecutor,
+                        ThreadPoolExecutor::getActiveCount)
                 .description("gRPC server executor active thread count")
                 .register(meterRegistry);
 
-        Gauge.builder(METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_QUEUE_SIZE,
-                        grpcExecutor, exec -> exec.getQueue().size())
+        Gauge.builder(
+                        METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_QUEUE_SIZE,
+                        grpcExecutor,
+                        exec -> exec.getQueue().size())
                 .description("gRPC server executor pending task queue size")
                 .register(meterRegistry);
 
-        Gauge.builder(METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_POOL_SIZE,
-                        grpcExecutor, ThreadPoolExecutor::getPoolSize)
+        Gauge.builder(
+                        METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_POOL_SIZE,
+                        grpcExecutor,
+                        ThreadPoolExecutor::getPoolSize)
                 .description("gRPC server executor current pool size")
                 .register(meterRegistry);
 
-        Gauge.builder(METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_MAX_POOL_SIZE,
-                        grpcExecutor, ThreadPoolExecutor::getMaximumPoolSize)
+        Gauge.builder(
+                        METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_MAX_POOL_SIZE,
+                        grpcExecutor,
+                        ThreadPoolExecutor::getMaximumPoolSize)
                 .description("gRPC server executor maximum pool size")
                 .register(meterRegistry);
 
         // FunctionCounters — monotonically increasing values read on each scrape
-        FunctionCounter.builder(METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_COMPLETED_TASKS,
-                        grpcExecutor, ThreadPoolExecutor::getCompletedTaskCount)
+        FunctionCounter.builder(
+                        METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_COMPLETED_TASKS,
+                        grpcExecutor,
+                        ThreadPoolExecutor::getCompletedTaskCount)
                 .description("gRPC server executor total completed tasks")
                 .register(meterRegistry);
 
-        FunctionCounter.builder(METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_CALLER_RUNS,
-                        countingCallerRunsHandler, handler -> handler.getCallerRunsCount().doubleValue())
+        FunctionCounter.builder(
+                        METRIC_PREFIX + MetricConstant.GRPC_SERVER_EXECUTOR_CALLER_RUNS,
+                        countingCallerRunsHandler,
+                        handler -> handler.getCallerRunsCount().doubleValue())
                 .description("gRPC server executor inline executions on saturation")
                 .register(meterRegistry);
 
@@ -237,11 +287,21 @@ public class FlexlbGrpcServer {
         GrpcReceivingGuard guard = receivingGuard;
         FlexMonitor monitor = flexMonitor;
         if (guard == null || monitor == null) return;
-        double[] values = {guard.receiving(), guard.controlReceiving(), guard.rejected(), guard.timedOut(),
-            guard.pendingTimers(), grpcExecutor.getQueue().size(), grpcExecutor.getActiveCount(),
-            grpcControlExecutor.getQueue().size(), grpcControlExecutor.getActiveCount(),
-            guard.receivingBytes(), guard.controlReceivingBytes()};
-        for (int i = 0; i < RECEIVING_METRICS.length; i++) monitor.report(RECEIVING_METRICS[i], values[i]);
+        double[] values = {
+            guard.receiving(),
+            guard.controlReceiving(),
+            guard.rejected(),
+            guard.timedOut(),
+            guard.pendingTimers(),
+            grpcExecutor.getQueue().size(),
+            grpcExecutor.getActiveCount(),
+            grpcControlExecutor.getQueue().size(),
+            grpcControlExecutor.getActiveCount(),
+            guard.receivingBytes(),
+            guard.controlReceivingBytes()
+        };
+        for (int i = 0; i < RECEIVING_METRICS.length; i++)
+            monitor.report(RECEIVING_METRICS[i], values[i]);
     }
 
     /** Called before Spring destroys any serving resources. */
@@ -251,14 +311,19 @@ public class FlexlbGrpcServer {
         }
         boolean interrupted = false;
         long startedAt = System.nanoTime();
-        Logger.info("keep serving until no new requests for {} ms",
+        Logger.info(
+                "keep serving until no new requests for {} ms",
                 TimeUnit.NANOSECONDS.toMillis(quietPeriodNanos));
         try {
             while (!server.isShutdown()) {
-                long lastArrival = Math.max(startedAt, grpcServerTimingInterceptor.getLastScheduleArrivalNanos());
+                long lastArrival =
+                        Math.max(
+                                startedAt,
+                                grpcServerTimingInterceptor.getLastScheduleArrivalNanos());
                 long remaining = quietPeriodNanos - (System.nanoTime() - lastArrival);
                 if (remaining <= 0) {
-                    Logger.info("Schedule quiet period elapsed; shutting down gRPC and waiting for accepted RPCs");
+                    Logger.info(
+                            "Schedule quiet period elapsed; shutting down gRPC and waiting for accepted RPCs");
                     server.shutdown();
                     break;
                 }

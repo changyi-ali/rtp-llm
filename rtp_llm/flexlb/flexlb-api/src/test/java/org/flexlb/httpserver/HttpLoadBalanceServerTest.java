@@ -20,7 +20,6 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Map;
 
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,7 +28,8 @@ class HttpLoadBalanceServerTest {
 
     @ParameterizedTest
     @EnumSource(DispatcherConfig.Type.class)
-    void masterInfoAdvertisesPayloadRequirementAndCanonicalQueueDepth(DispatcherConfig.Type dispatcher) {
+    void masterInfoAdvertisesPayloadRequirementAndCanonicalQueueDepth(
+            DispatcherConfig.Type dispatcher) {
         LBStatusConsistencyService consistency = mock(LBStatusConsistencyService.class);
         ConfigService configService = mock(ConfigService.class);
         FlexlbConfig config = new FlexlbConfig();
@@ -42,17 +42,17 @@ class HttpLoadBalanceServerTest {
         when(scheduler.getQueuedRequestCount()).thenReturn(7);
         when(synchronizer.isReady()).thenReturn(true);
 
-        HttpLoadBalanceServer server = new HttpLoadBalanceServer(
-                consistency,
-                configService,
-                scheduler,
-                endpointRegistry,
-                mock(WorkerDirectory.class),
-                synchronizer,
-                new ServerScheduleLatencyRecorder());
-        WebTestClient client = WebTestClient
-                .bindToRouterFunction(server.loadBalancePrefill())
-                .build();
+        HttpLoadBalanceServer server =
+                new HttpLoadBalanceServer(
+                        consistency,
+                        configService,
+                        scheduler,
+                        endpointRegistry,
+                        mock(WorkerDirectory.class),
+                        synchronizer,
+                        new ServerScheduleLatencyRecorder());
+        WebTestClient client =
+                WebTestClient.bindToRouterFunction(server.loadBalancePrefill()).build();
 
         client.post()
                 .uri("/rtp_llm/master/info")
@@ -60,13 +60,19 @@ class HttpLoadBalanceServerTest {
                 .accept(MediaType.APPLICATION_JSON)
                 .bodyValue("{}")
                 .exchange()
-                .expectStatus().isOk()
+                .expectStatus()
+                .isOk()
                 .expectBody()
-                .jsonPath("$.queue_length").isEqualTo(7)
-                .jsonPath("$.real_master_host").isEqualTo("127.0.0.1:7001")
-                .jsonPath("$.requires_generate_input").isEqualTo(dispatcher == DispatcherConfig.Type.BATCH)
-                .jsonPath("$.requiresGenerateInput").doesNotExist()
-                .jsonPath("$.ready").isEqualTo(true);
+                .jsonPath("$.queue_length")
+                .isEqualTo(7)
+                .jsonPath("$.real_master_host")
+                .isEqualTo("127.0.0.1:7001")
+                .jsonPath("$.requires_generate_input")
+                .isEqualTo(dispatcher == DispatcherConfig.Type.BATCH)
+                .jsonPath("$.requiresGenerateInput")
+                .doesNotExist()
+                .jsonPath("$.ready")
+                .isEqualTo(true);
 
         verify(scheduler).getQueuedRequestCount();
     }
@@ -80,72 +86,77 @@ class HttpLoadBalanceServerTest {
         WorkerStatus status = mock(WorkerStatus.class);
         when(configService.loadBalanceConfig()).thenReturn(new FlexlbConfig());
         when(endpoint.getStatus()).thenReturn(status);
-        when(status.cacheIndexSnapshot()).thenReturn(
-                new WorkerStatus.CacheIndexSnapshot(
-                        CacheStatus.builder()
-                                .version(9L)
-                                .cacheKeySize(4L)
-                                .build(),
-                        true,
-                        8L));
+        when(status.cacheIndexSnapshot())
+                .thenReturn(
+                        new WorkerStatus.CacheIndexSnapshot(
+                                CacheStatus.builder().version(9L).cacheKeySize(4L).build(),
+                                true,
+                                8L));
         when(endpointRegistry.snapshotPrefillEndpoints())
                 .thenReturn(Map.of("127.0.0.1:8080", endpoint));
         when(endpointRegistry.snapshotDecodeEndpoints()).thenReturn(Map.of());
 
-        HttpLoadBalanceServer server = new HttpLoadBalanceServer(
-                mock(LBStatusConsistencyService.class),
-                configService,
-                scheduler,
-                endpointRegistry,
-                mock(WorkerDirectory.class),
-                mock(MasterEngineSynchronizer.class),
-                new ServerScheduleLatencyRecorder());
-        WebTestClient client = WebTestClient
-                .bindToRouterFunction(server.loadBalancePrefill())
-                .build();
+        HttpLoadBalanceServer server =
+                new HttpLoadBalanceServer(
+                        mock(LBStatusConsistencyService.class),
+                        configService,
+                        scheduler,
+                        endpointRegistry,
+                        mock(WorkerDirectory.class),
+                        mock(MasterEngineSynchronizer.class),
+                        new ServerScheduleLatencyRecorder());
+        WebTestClient client =
+                WebTestClient.bindToRouterFunction(server.loadBalancePrefill()).build();
 
         client.get()
                 .uri("/rtp_llm/inflight_status")
                 .exchange()
-                .expectStatus().isOk()
+                .expectStatus()
+                .isOk()
                 .expectBody()
                 .jsonPath("$.prefill_endpoints[0].ip_port")
                 .isEqualTo("127.0.0.1:8080")
-                .jsonPath("$.prefill_endpoints[0].cache_version").isEqualTo(9)
-                .jsonPath("$.prefill_endpoints[0].cache_indexed").isEqualTo(true)
-                .jsonPath("$.prefill_endpoints[0].cache_indexed_version").isEqualTo(8)
-                .jsonPath("$.prefill_endpoints[0].cache_key_size").isEqualTo(4);
+                .jsonPath("$.prefill_endpoints[0].cache_version")
+                .isEqualTo(9)
+                .jsonPath("$.prefill_endpoints[0].cache_indexed")
+                .isEqualTo(true)
+                .jsonPath("$.prefill_endpoints[0].cache_indexed_version")
+                .isEqualTo(8)
+                .jsonPath("$.prefill_endpoints[0].cache_key_size")
+                .isEqualTo(4);
     }
 
     @Test
     void notifyMasterSerializesTheResponseContract() {
-        LBStatusConsistencyService consistency =
-                mock(LBStatusConsistencyService.class);
+        LBStatusConsistencyService consistency = mock(LBStatusConsistencyService.class);
         MasterChangeNotifyResp response = new MasterChangeNotifyResp();
         response.setSuccess(true);
         response.setMsg("refreshed");
         when(consistency.handleMasterChange(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(response);
-        HttpLoadBalanceServer server = new HttpLoadBalanceServer(
-                consistency,
-                mock(ConfigService.class),
-                mock(RequestScheduler.class),
-                mock(EndpointRegistry.class),
-                mock(WorkerDirectory.class),
-                mock(MasterEngineSynchronizer.class),
-                new ServerScheduleLatencyRecorder());
-        WebTestClient client = WebTestClient
-                .bindToRouterFunction(server.loadBalancePrefill())
-                .build();
+        HttpLoadBalanceServer server =
+                new HttpLoadBalanceServer(
+                        consistency,
+                        mock(ConfigService.class),
+                        mock(RequestScheduler.class),
+                        mock(EndpointRegistry.class),
+                        mock(WorkerDirectory.class),
+                        mock(MasterEngineSynchronizer.class),
+                        new ServerScheduleLatencyRecorder());
+        WebTestClient client =
+                WebTestClient.bindToRouterFunction(server.loadBalancePrefill()).build();
 
         client.post()
                 .uri("/rtp_llm/notify_master")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"roleId\":\"role-a\"}")
                 .exchange()
-                .expectStatus().isOk()
+                .expectStatus()
+                .isOk()
                 .expectBody()
-                .jsonPath("$.success").isEqualTo(true)
-                .jsonPath("$.msg").isEqualTo("refreshed");
+                .jsonPath("$.success")
+                .isEqualTo(true)
+                .jsonPath("$.msg")
+                .isEqualTo("refreshed");
     }
 }

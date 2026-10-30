@@ -37,9 +37,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
     private final RequestRegistry requests;
     private final DeliveryMetrics telemetry;
 
-    public RouteDeliveryStrategy(
-            RequestRegistry requests,
-            DeliveryMetrics telemetry) {
+    public RouteDeliveryStrategy(RequestRegistry requests, DeliveryMetrics telemetry) {
         this.requests = Objects.requireNonNull(requests, "requests");
         this.telemetry = Objects.requireNonNull(telemetry, "telemetry");
     }
@@ -50,23 +48,19 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
             PrefillTimePredictor.Evaluator evaluator,
             OptionalLong plannedPredictionMs) {
         if (candidates.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "route delivery requires at least one candidate");
+            throw new IllegalArgumentException("route delivery requires at least one candidate");
         }
         return prepareTransaction(candidates, evaluator);
     }
 
     private RouteTransaction prepareTransaction(
-            List<ScheduledRequest> candidates,
-            PrefillTimePredictor.Evaluator evaluator) {
+            List<ScheduledRequest> candidates, PrefillTimePredictor.Evaluator evaluator) {
         ScheduledRequest head = candidates.get(0);
         List<ScheduledRequest> admitted = new ArrayList<>(candidates.size());
         PrefillEndpoint prefill = head.prefillEp();
         if (prefill == null) {
             return RouteTransaction.blocked(
-                    this,
-                    head,
-                    CapacityBoundary.failed(missingEndpoint("Prefill", head)));
+                    this, head, CapacityBoundary.failed(missingEndpoint("Prefill", head)));
         }
         RouteTransaction transaction = new RouteTransaction(this, prefill);
         ScheduledRequest blockedItem = null;
@@ -87,8 +81,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                 if (cleanup != null) {
                     throw cleanup;
                 }
-                return RouteTransaction.blocked(
-                        this, blockedItem, blockedResult);
+                return RouteTransaction.blocked(this, blockedItem, blockedResult);
             }
             transaction.select(admitted, blockedItem, blockedResult);
             return transaction;
@@ -114,15 +107,13 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
             for (ScheduledRequest item : items) {
                 DeliveryClaim claim;
                 try {
-                    claim = requests.claimRouteDelivery(
-                            item, admission);
+                    claim = requests.claimRouteDelivery(item, admission);
                 } catch (Throwable claimFailure) {
                     try {
                         requests.failDeliveryPreparation(item, claimFailure);
                     } catch (Throwable terminalFailure) {
                         claimFailure.addSuppressed(terminalFailure);
-                        deliveryFailure = append(
-                                deliveryFailure, claimFailure);
+                        deliveryFailure = append(deliveryFailure, claimFailure);
                     }
                     continue;
                 }
@@ -136,18 +127,18 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                 ScheduledRequest item = route.item();
                 try {
                     long itemWorkMs = transaction.predictions.get(item);
-                    unstartedWorkMs = unstartedWorkMs > Long.MAX_VALUE - itemWorkMs
-                            ? Long.MAX_VALUE : unstartedWorkMs + itemWorkMs;
+                    unstartedWorkMs =
+                            unstartedWorkMs > Long.MAX_VALUE - itemWorkMs
+                                    ? Long.MAX_VALUE
+                                    : unstartedWorkMs + itemWorkMs;
                     requests.publishRoute(route.claim(), precedingWork, unstartedWorkMs);
                     delivered.add(item);
                 } catch (Throwable completionFailure) {
-                    deliveryFailure = append(
-                            deliveryFailure, completionFailure);
+                    deliveryFailure = append(deliveryFailure, completionFailure);
                 }
             }
         } finally {
-            deliveryFailure = append(
-                    deliveryFailure, close(admission));
+            deliveryFailure = append(deliveryFailure, close(admission));
         }
         if (!delivered.isEmpty()) {
             telemetry.routesDelivered(remainingQueueDepth, delivered);
@@ -157,16 +148,16 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
         }
     }
 
-    private record ClaimedRoute(ScheduledRequest item, DeliveryClaim claim) { }
+    private record ClaimedRoute(ScheduledRequest item, DeliveryClaim claim) {}
 
     @Override
     public double projectGroupDurationMs(
-            List<ScheduledRequest> items,
-            PrefillTimePredictor.Evaluator evaluator) {
+            List<ScheduledRequest> items, PrefillTimePredictor.Evaluator evaluator) {
         double totalMs = 0.0;
         for (ScheduledRequest item : items) {
-            totalMs += PrefillPredictionBoundary.predictSingleRequestMs(
-                    evaluator, item.seqLen(), item.hitCache());
+            totalMs +=
+                    PrefillPredictionBoundary.predictSingleRequestMs(
+                            evaluator, item.seqLen(), item.hitCache());
         }
         return PrefillPredictionBoundary.requireValidDecisionGroupMs(totalMs);
     }
@@ -176,9 +167,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
         return PROJECTION;
     }
 
-    private static long predict(
-            PrefillTimePredictor.Evaluator evaluator,
-            ScheduledRequest item) {
+    private static long predict(PrefillTimePredictor.Evaluator evaluator, ScheduledRequest item) {
         return PrefillPredictionBoundary.predictSingleRequestMs(
                 evaluator, item.seqLen(), item.hitCache());
     }
@@ -224,13 +213,12 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
         private CapacityBoundary blockedResult;
         private ArrayList<PrefillState.RouteReservation> reservations;
         private PrefillEndpoint.RouteCommitAdmission routeAdmission;
-        private final java.util.IdentityHashMap<ScheduledRequest, Long> predictions = new java.util.IdentityHashMap<>();
+        private final java.util.IdentityHashMap<ScheduledRequest, Long> predictions =
+                new java.util.IdentityHashMap<>();
         private ArrayList<PrefillAdmissionResources.Member> members;
         private PrefillAdmissionResources.CommittedAdmissionOwner committed;
 
-        private RouteTransaction(
-                RouteDeliveryStrategy owner,
-                PrefillEndpoint prefill) {
+        private RouteTransaction(RouteDeliveryStrategy owner, PrefillEndpoint prefill) {
             this.owner = owner;
             this.prefill = prefill;
             reservations = new ArrayList<>(1);
@@ -255,8 +243,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
         }
 
         synchronized CapacityBoundary.Attempt<ScheduledRequest> append(
-                ScheduledRequest exact,
-                PrefillTimePredictor.Evaluator evaluator) {
+                ScheduledRequest exact, PrefillTimePredictor.Evaluator evaluator) {
             requirePrepared("append");
             long predictedMs = predict(evaluator, exact);
             final CapacityBoundary.Attempt<ScheduledRequest> acceptedItem;
@@ -280,15 +267,17 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                 }
                 var result = routeAdmission.reserve(exact, predictedMs);
                 if (result.status() != PrefillState.CapacityStatus.ACQUIRED) {
-                    return rejectedPrefill(exact, result.status(), CapacityBoundary.deliveryUnavailable(
-                            prefill.routeAdmissionAvailability()));
+                    return rejectedPrefill(
+                            exact,
+                            result.status(),
+                            CapacityBoundary.deliveryUnavailable(
+                                    prefill.routeAdmissionAvailability()));
                 }
                 reservation = result.reservation();
             } catch (Throwable failure) {
                 return failed(failure);
             }
-            final CapacityBoundary.Attempt<PrefillAdmissionResources.Member>
-                    memberAttempt;
+            final CapacityBoundary.Attempt<PrefillAdmissionResources.Member> memberAttempt;
             try {
                 memberAttempt = prepareMember(exact);
             } catch (Throwable failure) {
@@ -336,9 +325,11 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                         "route commit does not match prepared identities");
             }
             if (reservations.isEmpty() || reservations.size() != members.size()) {
-                throw new IllegalStateException("route admission reservation/member ownership diverged");
+                throw new IllegalStateException(
+                        "route admission reservation/member ownership diverged");
             }
-            PrefillAdmissionResources.CommittedAdmissionOwner exactCommitted = createCommittedOwner(members);
+            PrefillAdmissionResources.CommittedAdmissionOwner exactCommitted =
+                    createCommittedOwner(members);
             PrefillState.CommittedHandoff handoff = routeAdmission.commit(items, reservations);
             exactCommitted.bindPrefillHandoff(handoff);
             committed = exactCommitted;
@@ -350,11 +341,12 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
 
         @Override
         public void handoff(
-                String decisionReason, int remainingQueueDepth,
-                WorkSnapshot precedingWork) {
-            PrefillAdmissionResources.CommittedAdmissionOwner exactCommitted =
-                    takeCommitted();
-            owner.deliver(this, exactCommitted, remainingQueueDepth,
+                String decisionReason, int remainingQueueDepth, WorkSnapshot precedingWork) {
+            PrefillAdmissionResources.CommittedAdmissionOwner exactCommitted = takeCommitted();
+            owner.deliver(
+                    this,
+                    exactCommitted,
+                    remainingQueueDepth,
                     Objects.requireNonNull(precedingWork, "precedingWork"));
         }
 
@@ -366,8 +358,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                     return;
                 }
                 if (committed == null) {
-                    throw new IllegalStateException(
-                            "route group has not committed its admission");
+                    throw new IllegalStateException("route group has not committed its admission");
                 }
                 exactCommitted = committed;
                 committed = null;
@@ -386,13 +377,10 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
             }
         }
 
-        private synchronized PrefillAdmissionResources.CommittedAdmissionOwner
-                takeCommitted() {
-            PrefillAdmissionResources.CommittedAdmissionOwner exactCommitted =
-                    committed;
+        private synchronized PrefillAdmissionResources.CommittedAdmissionOwner takeCommitted() {
+            PrefillAdmissionResources.CommittedAdmissionOwner exactCommitted = committed;
             if (exactCommitted == null) {
-                throw new IllegalStateException(
-                        "route group no longer owns a committed admission");
+                throw new IllegalStateException("route group no longer owns a committed admission");
             }
             committed = null;
             return exactCommitted;
@@ -422,22 +410,21 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
             }
             // Release the generation only after every provisional send slot is returned.
             if (exactAdmission != null) {
-                failure = RouteDeliveryStrategy.append(failure, RouteDeliveryStrategy.close(exactAdmission));
+                failure =
+                        RouteDeliveryStrategy.append(
+                                failure, RouteDeliveryStrategy.close(exactAdmission));
             }
             return failure;
         }
 
         private void requirePrepared(String operation) {
-            if (reservations == null
-                    || members == null) {
-                throw new IllegalStateException(
-                        operation + " requires PREPARED route admission");
+            if (reservations == null || members == null) {
+                throw new IllegalStateException(operation + " requires PREPARED route admission");
             }
         }
     }
 
-    private static final class RouteProjectionPolicy
-            implements RouteProjection.DeliveryProjection {
+    private static final class RouteProjectionPolicy implements RouteProjection.DeliveryProjection {
 
         private static final ThreadLocal<RoutePlanning> PLANNING =
                 ThreadLocal.withInitial(RoutePlanning::new);
@@ -446,15 +433,12 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
 
         @Override
         public long singletonCompletionOffsetMs(
-                long seqLen,
-                long hitCache,
-                RouteProjection.Predictions predictions) {
+                long seqLen, long hitCache, RouteProjection.Predictions predictions) {
             return predictions.itemDurationMs(seqLen, hitCache);
         }
 
         @Override
-        public RouteProjection.GroupPlanning planning(
-                RouteProjection.Predictions predictions) {
+        public RouteProjection.GroupPlanning planning(RouteProjection.Predictions predictions) {
             RoutePlanning planning = PLANNING.get();
             planning.reset(predictions);
             return planning;
@@ -469,8 +453,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
             return service;
         }
 
-        private static final class RoutePlanning
-                implements RouteProjection.GroupPlanning {
+        private static final class RoutePlanning implements RouteProjection.GroupPlanning {
             private GroupPlanner.Item[] previous = new GroupPlanner.Item[0];
             private long[] offsets = new long[0];
             private int previousSize;
@@ -484,11 +467,8 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
             }
 
             @Override
-            public double durationMs(
-                    List<GroupPlanner.Item> prefix,
-                    int requiredThroughIndex) {
-                if (requiredThroughIndex < 0
-                        || requiredThroughIndex >= prefix.size()) {
+            public double durationMs(List<GroupPlanner.Item> prefix, int requiredThroughIndex) {
+                if (requiredThroughIndex < 0 || requiredThroughIndex >= prefix.size()) {
                     throw new IndexOutOfBoundsException(requiredThroughIndex);
                 }
                 if (!isIdentityPrefix(prefix)) {
@@ -500,8 +480,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                     computedThrough = -1;
                 } else if (previousSize < prefix.size()) {
                     ensureCapacity(prefix.size());
-                    for (int index = previousSize;
-                            index < prefix.size(); index++) {
+                    for (int index = previousSize; index < prefix.size(); index++) {
                         previous[index] = prefix.get(index);
                     }
                     previousSize = prefix.size();
@@ -509,9 +488,8 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                 while (computedThrough < requiredThroughIndex) {
                     int next = computedThrough + 1;
                     long prior = next == 0 ? 0L : offsets[next - 1];
-                    offsets[next] = saturatedAdd(
-                            prior,
-                            predictions.itemDurationMs(prefix.get(next)));
+                    offsets[next] =
+                            saturatedAdd(prior, predictions.itemDurationMs(prefix.get(next)));
                     computedThrough = next;
                 }
                 return offsets[requiredThroughIndex];
@@ -538,8 +516,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
             }
         }
 
-        private static final class RouteService
-                implements RouteProjection.GroupService {
+        private static final class RouteService implements RouteProjection.GroupService {
             private GroupPlanner.Plan<GroupPlanner.Item> plan;
             private RouteProjection.Predictions predictions;
             private long[] offsets = new long[0];
@@ -551,8 +528,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                 plan = exactPlan;
                 predictions = exactPredictions;
                 if (offsets.length < exactPlan.items().size()) {
-                    offsets = java.util.Arrays.copyOf(
-                            offsets, exactPlan.items().size());
+                    offsets = java.util.Arrays.copyOf(offsets, exactPlan.items().size());
                 }
                 computedThrough = -1;
             }
@@ -565,10 +541,8 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
                 while (computedThrough < memberIndex) {
                     int next = computedThrough + 1;
                     long prior = next == 0 ? 0L : offsets[next - 1];
-                    offsets[next] = saturatedAdd(
-                            prior,
-                            predictions.itemDurationMs(
-                                    plan.items().get(next)));
+                    offsets[next] =
+                            saturatedAdd(prior, predictions.itemDurationMs(plan.items().get(next)));
                     computedThrough = next;
                 }
                 return offsets[memberIndex];
@@ -581,8 +555,7 @@ public final class RouteDeliveryStrategy implements DeliveryStrategy {
         }
 
         private static long saturatedAdd(long left, long right) {
-            return left > Long.MAX_VALUE - right
-                    ? Long.MAX_VALUE : left + right;
+            return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
         }
     }
 }

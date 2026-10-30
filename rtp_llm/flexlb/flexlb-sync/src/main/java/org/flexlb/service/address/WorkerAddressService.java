@@ -53,24 +53,26 @@ public class WorkerAddressService {
      */
     private final ThreadPoolExecutor serviceDiscoveryExecutor;
 
-    public WorkerAddressService(EngineHealthReporter engineHealthReporter,
-                                ModelMetaConfig modelMetaConfig,
-                                ServiceDiscovery serviceDiscovery,
-                                ConfigService configService) {
+    public WorkerAddressService(
+            EngineHealthReporter engineHealthReporter,
+            ModelMetaConfig modelMetaConfig,
+            ServiceDiscovery serviceDiscovery,
+            ConfigService configService) {
 
         this.engineHealthReporter = engineHealthReporter;
         this.modelMetaConfig = modelMetaConfig;
         this.serviceDiscovery = serviceDiscovery;
         FlexlbConfig config = configService.loadBalanceConfig();
-        this.serviceDiscoveryExecutor = new ThreadPoolExecutor(
-                10,
-                config.getInternalRuntime().getServiceDiscoveryMaxThreads(),
-                60L,
-                TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000),
-                new NamedThreadFactory("service-discovery-executor"),
-                // Never run discovery inline: submit would bypass the timeout below.
-                new ThreadPoolExecutor.AbortPolicy()
-        );
+        this.serviceDiscoveryExecutor =
+                new ThreadPoolExecutor(
+                        10,
+                        config.getInternalRuntime().getServiceDiscoveryMaxThreads(),
+                        60L,
+                        TimeUnit.SECONDS,
+                        new LinkedBlockingQueue<>(1000),
+                        new NamedThreadFactory("service-discovery-executor"),
+                        // Never run discovery inline: submit would bypass the timeout below.
+                        new ThreadPoolExecutor.AbortPolicy());
     }
 
     @PreDestroy
@@ -83,7 +85,8 @@ public class WorkerAddressService {
         try {
             engineHealthReporter.reportThreadPoolInfo(
                     ENGINE_BALANCING_THREAD_POOL_INFO,
-                    "serviceDiscoveryExecutor", serviceDiscoveryExecutor);
+                    "serviceDiscoveryExecutor",
+                    serviceDiscoveryExecutor);
         } catch (Throwable failure) {
             logger.warn("Failed to report service discovery executor metrics", failure);
         }
@@ -92,8 +95,7 @@ public class WorkerAddressService {
     public List<WorkerHost> getEngineWorkerList(String modelName, RoleType modelEndpointType) {
         List<WorkerHost> workerHosts = new ArrayList<>();
         List<Pair<String, Endpoint>> endpoints =
-                modelMetaConfig.endpointsWithGroup(
-                        modelName, modelEndpointType);
+                modelMetaConfig.endpointsWithGroup(modelName, modelEndpointType);
         if (endpoints.isEmpty()) {
             logger.info(
                     "modelName={} role={} service route not found", modelName, modelEndpointType);

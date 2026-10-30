@@ -3,8 +3,6 @@ package org.flexlb.engine.grpc.config;
 import io.micrometer.core.instrument.util.NamedThreadFactory;
 import io.netty.channel.DefaultSelectStrategyFactory;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.epoll.Epoll;
-import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.concurrent.DefaultEventExecutorChooserFactory;
 import io.netty.util.concurrent.DefaultThreadFactory;
@@ -34,11 +32,12 @@ public class ChannelConfiguration {
         return new ThreadPoolExecutor(
                 config.getInternalRuntime().getGrpcClientExecutorThreads(),
                 config.getInternalRuntime().getGrpcClientExecutorThreads(),
-                5, TimeUnit.MINUTES,
-                new LinkedBlockingQueue<>(config.getInternalRuntime().getGrpcClientExecutorQueueCapacity()),
+                5,
+                TimeUnit.MINUTES,
+                new LinkedBlockingQueue<>(
+                        config.getInternalRuntime().getGrpcClientExecutorQueueCapacity()),
                 new NamedThreadFactory("engine-grpc-client-executor"),
-                new GrpcCallbackCallerRunsPolicy()
-        );
+                new GrpcCallbackCallerRunsPolicy());
     }
 
     /**
@@ -55,11 +54,11 @@ public class ChannelConfiguration {
         return new ThreadPoolExecutor(
                 16,
                 16,
-                5, TimeUnit.MINUTES,
+                5,
+                TimeUnit.MINUTES,
                 new LinkedBlockingQueue<>(2000),
                 new NamedThreadFactory("flexlb-forwarder-channel-executor"),
-                new GrpcCallbackCallerRunsPolicy()
-        );
+                new GrpcCallbackCallerRunsPolicy());
     }
 
     @Bean
@@ -73,15 +72,7 @@ public class ChannelConfiguration {
         // admission: the dispatch executor's admission permit bounds in-flight
         // EnqueueBatch payloads (see DefaultBatchDispatcher).
         int threads = config.getInternalRuntime().getGrpcClientEventLoopThreads();
-        if (Epoll.isAvailable()) {
-            return new EpollEventLoopGroup(
-                    threads,
-                    null,
-                    DefaultEventExecutorChooserFactory.INSTANCE,
-                    DefaultSelectStrategyFactory.INSTANCE,
-                    RejectedExecutionHandlers.reject(),
-                    PlatformDependent::newMpscQueue);
-        }
+        // The release transport observer creates NIO channels, so its event loop must also use NIO.
         return new NioEventLoopGroup(
                 threads,
                 null,
@@ -89,15 +80,13 @@ public class ChannelConfiguration {
                 SelectorProvider.provider(),
                 DefaultSelectStrategyFactory.INSTANCE,
                 RejectedExecutionHandlers.reject(),
-                PlatformDependent::newMpscQueue
-        );
+                PlatformDependent::newMpscQueue);
     }
 
     @Bean(destroyMethod = "")
     public EventLoopGroup grpcServerEventLoopGroup() {
         return new NioEventLoopGroup(
                 config.getInternalRuntime().getGrpcServerWorkerEventLoopThreads(),
-                new DefaultThreadFactory("grpc-server-elg")
-        );
+                new DefaultThreadFactory("grpc-server-elg"));
     }
 }

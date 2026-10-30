@@ -1,10 +1,10 @@
 package org.flexlb.testfixture;
 
 import org.flexlb.dao.master.WorkerStatus;
-import org.flexlb.dao.master.WorkerStatus.TaskTelemetry;
 import org.flexlb.dao.master.WorkerStatus.EngineObservation;
 import org.flexlb.dao.master.WorkerStatus.StatusObservation;
 import org.flexlb.dao.master.WorkerStatus.TaskObservation;
+import org.flexlb.dao.master.WorkerStatus.TaskTelemetry;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -12,7 +12,7 @@ import java.util.Objects;
 
 /** Test data setup through the production poll and publication APIs. */
 public final class WorkerStatusTestFixtures {
-    private WorkerStatusTestFixtures() { }
+    private WorkerStatusTestFixtures() {}
 
     public static WorkerStatus readyForScheduling(WorkerStatus worker) {
         receive(worker, true, null);
@@ -41,7 +41,8 @@ public final class WorkerStatusTestFixtures {
         }
     }
 
-    public static WorkerStatus.PollHealth receive(WorkerStatus worker, boolean alive, Throwable failure) {
+    public static WorkerStatus.PollHealth receive(
+            WorkerStatus worker, boolean alive, Throwable failure) {
         try (WorkerStatus.PollLease lease = Objects.requireNonNull(worker.tryBeginStatusPoll(1L))) {
             worker.recordStatusRpcResult(lease, failure == null, alive, failure);
         }
@@ -55,30 +56,31 @@ public final class WorkerStatusTestFixtures {
     public static StatusObservation observation(
             WorkerStatus worker, WorkerStatusResponse response) {
         Objects.requireNonNull(response, "response");
-        Map<String, TaskObservation> runningTasks = freezeTaskMap(
-                response.getRunningTaskInfo());
-        Map<String, TaskObservation> finishedTasks = freezeTaskMap(
-                response.getFinishedTaskInfo());
-        EngineObservation engine = new EngineObservation(
-                response.getRole(),
-                response.getAvailableConcurrency(),
-                response.getAvailableKvCacheTokens(),
-                response.getTotalKvCacheTokens(),
-                runningTasks,
-                response.getStepLatencyMs(),
-                response.getIterateCount(),
-                response.getDpSize(),
-                response.getTpSize(),
-                response.getDpRank(),
-                response.getCacheStatus() == null ? 0L : response.getCacheStatus().getBlockSize(),
-                response.getBlockHashLookaheadTokens(),
-                response.getCacheMatchRollbackBlocks(),
-                response.getKvCacheGroupMode(),
-                response.getMaxSeqLen(),
-                response.getMaxBatchTokensSize(),
-                response.getRunningQueryLen(),
-                response.getWaitingQueryLen(),
-                response.getLastStepMetrics());
+        Map<String, TaskObservation> runningTasks = freezeTaskMap(response.getRunningTaskInfo());
+        Map<String, TaskObservation> finishedTasks = freezeTaskMap(response.getFinishedTaskInfo());
+        EngineObservation engine =
+                new EngineObservation(
+                        response.getRole(),
+                        response.getAvailableConcurrency(),
+                        response.getAvailableKvCacheTokens(),
+                        response.getTotalKvCacheTokens(),
+                        runningTasks,
+                        response.getStepLatencyMs(),
+                        response.getIterateCount(),
+                        response.getDpSize(),
+                        response.getTpSize(),
+                        response.getDpRank(),
+                        response.getCacheStatus() == null
+                                ? 0L
+                                : response.getCacheStatus().getBlockSize(),
+                        response.getBlockHashLookaheadTokens(),
+                        response.getCacheMatchRollbackBlocks(),
+                        response.getKvCacheGroupMode(),
+                        response.getMaxSeqLen(),
+                        response.getMaxBatchTokensSize(),
+                        response.getRunningQueryLen(),
+                        response.getWaitingQueryLen(),
+                        response.getLastStepMetrics());
         return worker.bindStatusObservation(
                 engine,
                 response.isAlive(),
@@ -87,59 +89,55 @@ public final class WorkerStatusTestFixtures {
                 finishedTasks);
     }
 
-    private static Map<String, TaskObservation> freezeTaskMap(
-            Map<String, TaskInfo> tasks) {
+    private static Map<String, TaskObservation> freezeTaskMap(Map<String, TaskInfo> tasks) {
         if (tasks == null || tasks.isEmpty()) {
             return Map.of();
         }
         Map<String, TaskObservation> frozen = new HashMap<>(tasks.size());
         for (Map.Entry<String, TaskInfo> entry : tasks.entrySet()) {
             if (entry.getKey() != null && entry.getValue() != null) {
-                frozen.put(entry.getKey(), copyTask(
-                        entry.getValue()));
+                frozen.put(entry.getKey(), copyTask(entry.getValue()));
             }
         }
         return Map.copyOf(frozen);
     }
 
-
     private static TaskObservation copyTask(TaskInfo task) {
-            return new TaskObservation(
-                    task.getRequestId(),
-                    task.getPrefixLength(),
-                    task.getPrefillTime(),
-                    task.getInputLength(),
-                    task.getWaitingTime(),
-                    task.getIterateCount(),
-                    task.getEndTimeMs(),
-                    task.getDpRank(),
-                    task.getErrorCode(),
-                    task.getErrorMessage(),
-                    task.getBatchId(),
-                    task.getPhase(),
-                    task.getExecutionTimeMs(),
-                    task.getPriorityPreemptionProgress(),
-                    new TaskTelemetry(
-                            task.isPrefixLengthValid(),
-                            task.getRequestReceivedTimeMs(),
-                            task.getInputQueueEnqueueTimeMs(),
-                            task.getInputQueueDrainTimeMs(),
-                            task.getWaitingEnteredTimeMs(),
-                            task.getRunningEnteredTimeMs(),
-                            task.getRemoteKvWaitMs(),
-                            task.getFirstTokenTimeMs(),
-                            task.getHbmLocalMatchTokens(),
-                            task.getRemoteKvAddedMatchTokens(),
-                            task.getFirstPrefillStepId(),
-                            task.getLastPrefillStepId(),
-                            task.getPrefillStepCount(),
-                            task.getPrefillNonfinalChunkTokensMin(),
-                            task.getPrefillNonfinalChunkTokensMax(),
-                            task.getCompletedPrefillTokens(),
-                            task.getRemainingPrefillTokens() < 0
-                                    ? null
-                                    : task.getRemainingPrefillTokens(),
-                            task.getLastCompletedPrefillStepId()));
-        }
-
+        return new TaskObservation(
+                task.getRequestId(),
+                task.getPrefixLength(),
+                task.getPrefillTime(),
+                task.getInputLength(),
+                task.getWaitingTime(),
+                task.getIterateCount(),
+                task.getEndTimeMs(),
+                task.getDpRank(),
+                task.getErrorCode(),
+                task.getErrorMessage(),
+                task.getBatchId(),
+                task.getPhase(),
+                task.getExecutionTimeMs(),
+                task.getPriorityPreemptionProgress(),
+                new TaskTelemetry(
+                        task.isPrefixLengthValid(),
+                        task.getRequestReceivedTimeMs(),
+                        task.getInputQueueEnqueueTimeMs(),
+                        task.getInputQueueDrainTimeMs(),
+                        task.getWaitingEnteredTimeMs(),
+                        task.getRunningEnteredTimeMs(),
+                        task.getRemoteKvWaitMs(),
+                        task.getFirstTokenTimeMs(),
+                        task.getHbmLocalMatchTokens(),
+                        task.getRemoteKvAddedMatchTokens(),
+                        task.getFirstPrefillStepId(),
+                        task.getLastPrefillStepId(),
+                        task.getPrefillStepCount(),
+                        task.getPrefillNonfinalChunkTokensMin(),
+                        task.getPrefillNonfinalChunkTokensMax(),
+                        task.getCompletedPrefillTokens(),
+                        task.getRemainingPrefillTokens() < 0
+                                ? null
+                                : task.getRemainingPrefillTokens(),
+                        task.getLastCompletedPrefillStepId()));
+    }
 }

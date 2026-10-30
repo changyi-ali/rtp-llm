@@ -1,11 +1,11 @@
 package org.flexlb.engine.grpc;
 
-import io.grpc.ManagedChannel;
 import io.grpc.Deadline;
+import io.grpc.ManagedChannel;
 import lombok.Getter;
+import org.flexlb.dao.master.WorkerHost;
 import org.flexlb.engine.grpc.monitor.GrpcReporter;
 import org.flexlb.engine.grpc.nameresolver.EngineAddressResolver;
-import org.flexlb.dao.master.WorkerHost;
 import org.flexlb.util.Logger;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -31,7 +31,9 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
      *
      * @see ServiceType
      */
-    protected final Map<String/*ip:port:serviceType*/, Invoker> channelPool = new ConcurrentHashMap<>();
+    protected final Map<String /*ip:port:serviceType*/, Invoker> channelPool =
+            new ConcurrentHashMap<>();
+
     protected final GrpcReporter grpcReporter;
     protected boolean cacheStatusEnabled = true;
 
@@ -54,7 +56,6 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
 
         // Update gRPC channel pool
         updateGrpcChannelPool(ipPortList);
-
     }
 
     /**
@@ -64,18 +65,22 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
      * @param ipPortList Latest worker address list in format ip:httpPort
      */
     private void updateGrpcChannelPool(List<WorkerHost> ipPortList) {
-        Set<String/*ip:port:serviceType*/> currentKeys = new HashSet<>(channelPool.keySet());
-        List<String/*ip:port:serviceType*/> addedKeys = new ArrayList<>();
+        Set<String /*ip:port:serviceType*/> currentKeys = new HashSet<>(channelPool.keySet());
+        List<String /*ip:port:serviceType*/> addedKeys = new ArrayList<>();
 
         // Identify new and retained workers, mark channels to be removed
         for (WorkerHost host : ipPortList) {
             for (ServiceType serviceType : ServiceType.values()) {
-                if (!cacheStatusEnabled && (serviceType == ServiceType.CACHE_STATUS
-                        || serviceType == ServiceType.MULTIMODAL_CACHE_STATUS)) {
+                if (!cacheStatusEnabled
+                        && (serviceType == ServiceType.CACHE_STATUS
+                                || serviceType == ServiceType.MULTIMODAL_CACHE_STATUS)) {
                     continue;
                 }
-                int port = (serviceType == ServiceType.BATCH_ENQUEUE || serviceType == ServiceType.ENGINE_CANCEL)
-                        ? host.getGrpcPort() : host.getWorkerStatusPort();
+                int port =
+                        (serviceType == ServiceType.BATCH_ENQUEUE
+                                        || serviceType == ServiceType.ENGINE_CANCEL)
+                                ? host.getGrpcPort()
+                                : host.getWorkerStatusPort();
                 String serviceKey = createKey(host.getIp(), port, serviceType);
                 boolean contained = currentKeys.remove(serviceKey);
                 if (!contained) {
@@ -111,13 +116,18 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
                 try {
                     invoker.shutdown(CloseReason.DISCOVERY_REMOVED);
                 } catch (Exception e) {
-                    Logger.error("shutdown channel for ipPort {} failed", invoker.getChannelKey(), e);
+                    Logger.error(
+                            "shutdown channel for ipPort {} failed", invoker.getChannelKey(), e);
                 }
             }
         }
 
-        Logger.info("gRPC channel pool changed: hosts={}, addedChannels={}, removedChannels={}, totalChannels={}",
-                ipPortList.size(), addedChannelCount, removedChannelCount, channelPool.size());
+        Logger.info(
+                "gRPC channel pool changed: hosts={}, addedChannels={}, removedChannels={}, totalChannels={}",
+                ipPortList.size(),
+                addedChannelCount,
+                removedChannelCount,
+                channelPool.size());
     }
 
     @Scheduled(fixedRate = 2000)
@@ -143,7 +153,8 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
         return newInvoker;
     }
 
-    protected Invoker replaceInvoker(String channelKey, Invoker expectedInvoker, ManagedChannel managedChannel) {
+    protected Invoker replaceInvoker(
+            String channelKey, Invoker expectedInvoker, ManagedChannel managedChannel) {
         Invoker newInvoker = new Invoker(channelKey, managedChannel);
         if (expectedInvoker == null) {
             Invoker existing = channelPool.putIfAbsent(channelKey, newInvoker);
@@ -173,7 +184,8 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
                 try {
                     invoker.shutdown(CloseReason.CLIENT_SHUTDOWN);
                 } catch (Exception e) {
-                    Logger.error("shutdown channel for ipPort {} failed in pre-destroy", channelKey, e);
+                    Logger.error(
+                            "shutdown channel for ipPort {} failed in pre-destroy", channelKey, e);
                 }
             }
         }
@@ -189,7 +201,7 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
     protected static String[] parseServiceKey(String serviceKey) {
         String[] parts = serviceKey.split(":");
         if (parts.length == 3) {
-            return new String[]{parts[0], parts[1], parts[2]};
+            return new String[] {parts[0], parts[1], parts[2]};
         }
 
         throw new IllegalArgumentException("Invalid service key format: " + serviceKey);
@@ -203,8 +215,7 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
     }
 
     /** A local close request; it does not establish the cause of a preceding transport failure. */
-    public record CloseObservation(CloseReason reason, long nanoTime, boolean forced) {
-    }
+    public record CloseObservation(CloseReason reason, long nanoTime, boolean forced) {}
 
     /**
      * Wrapper class for FutureStub (async gRPC calls)
@@ -213,8 +224,9 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
         private final RpcServiceGrpc.RpcServiceFutureStub rpcServiceFutureStub;
         private final MultimodalRpcServiceGrpc.MultimodalRpcServiceFutureStub multimodalFutureStub;
 
-        public GrpcFutureStubWrapper(RpcServiceGrpc.RpcServiceFutureStub rpcServiceFutureStub,
-                                     MultimodalRpcServiceGrpc.MultimodalRpcServiceFutureStub multimodalFutureStub) {
+        public GrpcFutureStubWrapper(
+                RpcServiceGrpc.RpcServiceFutureStub rpcServiceFutureStub,
+                MultimodalRpcServiceGrpc.MultimodalRpcServiceFutureStub multimodalFutureStub) {
             this.rpcServiceFutureStub = rpcServiceFutureStub;
             this.multimodalFutureStub = multimodalFutureStub;
         }
@@ -234,8 +246,7 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
         public GrpcFutureStubWrapper withDeadline(Deadline deadline) {
             return new GrpcFutureStubWrapper(
                     rpcServiceFutureStub.withDeadline(deadline),
-                    multimodalFutureStub.withDeadline(deadline)
-            );
+                    multimodalFutureStub.withDeadline(deadline));
         }
 
         public GrpcFutureStubWrapper withTrace(GrpcCallTrace trace) {
@@ -285,7 +296,8 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
                 return;
             }
             try {
-                closeObservation.compareAndSet(null, new CloseObservation(reason, System.nanoTime(), false));
+                closeObservation.compareAndSet(
+                        null, new CloseObservation(reason, System.nanoTime(), false));
             } catch (RuntimeException | Error ignored) {
                 // Recording diagnostics must not prevent closing a channel under memory pressure.
             }
@@ -316,18 +328,24 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
 
         private void forceShutdown(CloseReason reason) {
             try {
-                // A graceful request does not cancel active calls. Record the distinct forced action.
-                closeObservation.updateAndGet(previous -> previous != null && previous.forced()
-                        ? previous : new CloseObservation(reason, System.nanoTime(), true));
+                // A graceful request does not cancel active calls. Record the distinct forced
+                // action.
+                closeObservation.updateAndGet(
+                        previous ->
+                                previous != null && previous.forced()
+                                        ? previous
+                                        : new CloseObservation(reason, System.nanoTime(), true));
             } catch (RuntimeException | Error ignored) {
                 // Diagnostics must not prevent releasing the channel.
             }
             channel.shutdownNow();
         }
 
-        private void logCloseSafely(CloseReason reason, boolean force, String trigger, Throwable failure) {
+        private void logCloseSafely(
+                CloseReason reason, boolean force, String trigger, Throwable failure) {
             try {
-                String format = "event=engine_grpc_channel_close reason={} channelKey={} createTimeUs={} force={} trigger={}";
+                String format =
+                        "event=engine_grpc_channel_close reason={} channelKey={} createTimeUs={} force={} trigger={}";
                 if (force) {
                     Logger.warn(format, reason, channelKey, createTime, true, trigger, failure);
                 } else {
@@ -346,7 +364,6 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
      * @see EngineGrpcClient
      */
     public enum ServiceType {
-
         WORKER_STATUS("worker", "GetWorkerStatus"),
         CACHE_STATUS("cache", "GetCacheStatus"),
         MULTIMODAL_WORKER_STATUS("multimodal_worker", "GetWorkerStatus"),
@@ -356,10 +373,8 @@ public abstract class AbstractGrpcClient implements EngineAddressResolver.Listen
         // the pooled channel of the target engine worker.
         ENGINE_CANCEL("engine_cancel", "Cancel");
 
-        @Getter
-        private final String suffix;
-        @Getter
-        private final String operationName;
+        @Getter private final String suffix;
+        @Getter private final String operationName;
 
         ServiceType(String suffix, String operationName) {
             this.suffix = suffix;
